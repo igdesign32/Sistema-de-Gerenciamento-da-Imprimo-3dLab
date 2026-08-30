@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import {
   Boxes, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Factory,
   FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Pencil, Plus, Search,
-  Minus, Printer, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
+  MessageCircle, Minus, Printer, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -477,8 +477,12 @@ function StockMetric({ icon: Icon, label, value, tone }: { icon: React.ElementTy
 }
 
 function QuotesView({ quotes, onNewQuote, onEdit, onDelete }: { quotes: Quote[]; onNewQuote: () => void; onEdit: (quote: Quote) => void; onDelete: (quote: Quote) => void }) {
+  const shareOnWhatsApp = (quote: Quote) => {
+    const message = `Olá! Segue o orçamento ${quote.id} da Imprimo3DLab.\nCliente: ${quote.client}\nItem: ${quote.item}\nValor: ${quote.total}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+  };
   return <ModuleShell title={`${quotes.length} orçamentos recentes`} detail="Crie, edite e converta propostas em pedidos" action="Novo orçamento" onAction={onNewQuote}>
-    <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Orçamento','Cliente','Item','Criado em','Valor','Status','Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{quotes.map(quote => <tr key={quote.id} className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{quote.id}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.client}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.item}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.date}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.total}</td><td className="px-4 py-3"><Badge variant="secondary" className="bg-blue-50 text-blue-700">{quote.status}</Badge></td><td className="px-4 py-2"><div className="flex gap-1"><Button onClick={() => onEdit(quote)} variant="ghost" size="icon" aria-label={`Editar ${quote.id}`} className="text-[#0068ff] hover:bg-blue-50"><Pencil/></Button><Button onClick={() => onDelete(quote)} variant="ghost" size="icon" aria-label={`Apagar ${quote.id}`} className="text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2/></Button></div></td></tr>)}</tbody></table></div>
+    <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Orçamento','Cliente','Item','Criado em','Valor','Status','','Ações'].map((header, index) => <th key={`${header}-${index}`} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{quotes.map(quote => <tr key={quote.id} className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{quote.id}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.client}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.item}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.date}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.total}</td><td className="px-4 py-3"><Badge variant="secondary" className="bg-blue-50 text-blue-700">{quote.status}</Badge></td><td className="px-1 py-2"><Button onClick={() => shareOnWhatsApp(quote)} variant="ghost" size="icon" aria-label={`Enviar ${quote.id} pelo WhatsApp`} title="Enviar pelo WhatsApp" className="text-[#25D366] hover:bg-emerald-50 hover:text-[#1da851]"><MessageCircle/></Button></td><td className="px-4 py-2"><div className="flex gap-1"><Button onClick={() => onEdit(quote)} variant="ghost" size="icon" aria-label={`Editar ${quote.id}`} className="text-[#0068ff] hover:bg-blue-50"><Pencil/></Button><Button onClick={() => onDelete(quote)} variant="ghost" size="icon" aria-label={`Apagar ${quote.id}`} className="text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2/></Button></div></td></tr>)}</tbody></table></div>
   </ModuleShell>;
 }
 
