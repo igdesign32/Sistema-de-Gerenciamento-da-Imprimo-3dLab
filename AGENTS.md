@@ -2,14 +2,15 @@
 
 Este projeto usa o repositório `origin` no GitHub e a branch principal `main` como histórico oficial do código.
 
-## Fluxo obrigatório para alterações
+## Fluxo manual de sincronização
 
-1. Antes de iniciar mudanças, verificar o estado local e buscar atualizações do `origin`.
-2. Nunca descartar alterações locais do usuário. Se houver divergência ou conflito com o remoto, interromper e pedir orientação.
-3. Implementar apenas as mudanças solicitadas e validar o projeto de forma proporcional ao risco.
-4. Não versionar credenciais, arquivos `.env`, dependências, caches ou artefatos temporários de compilação.
-5. Ao concluir uma alteração validada, criar um commit descritivo na branch `main` e enviar para `origin/main`.
-6. Confirmar ao usuário o commit e se a sincronização com o GitHub foi concluída.
-7. Se a autenticação ou o envio falhar, manter o commit local intacto e informar claramente o que falta para sincronizar.
+1. Não executar `fetch`, `pull` ou `push` no repositório `origin` automaticamente.
+2. Implementar e validar normalmente as mudanças solicitadas, preservando sempre alterações locais do usuário.
+3. Só sincronizar com o GitHub quando o usuário pedir explicitamente, por exemplo: “sincronize com o GitHub”.
+4. Quando a sincronização for solicitada, buscar atualizações do `origin`, verificar divergências, criar um commit descritivo para as alterações pendentes e enviar a branch `main` para `origin/main`.
+5. Se houver divergência ou conflito com o remoto, interromper e pedir orientação antes de modificar o histórico.
+6. Não versionar credenciais, arquivos `.env`, dependências, caches ou artefatos temporários de compilação.
+7. Commits locais continuam permitidos quando forem tecnicamente necessários para publicar o Site, mas não devem ser enviados ao GitHub sem solicitação explícita.
+8. Ao concluir uma sincronização manual, confirmar ao usuário o commit e se o envio ao GitHub foi concluído.
 
 Não realizar `push --force`, reescrever histórico ou apagar branches sem solicitação explícita do usuário.

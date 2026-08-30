@@ -139,8 +139,10 @@ function FinanceView() {
 type FinishedPart = { id: string; sku: string; name: string; detail: string; stock: number; color: string; cost: number; price: number };
 type CartItem = { partId: string; quantity: number; unitPrice: number };
 type Customer = { id: string; name: string; phone: string; email: string };
+type Supply = { id: string; name: string; type: string; quantity: number; unit: string; unitCost: number; supplier: string };
 
 function FinishedParts() {
+  const [inventorySection, setInventorySection] = useState<'parts' | 'supplies'>('parts');
   const [parts, setParts] = useState<FinishedPart[]>([]);
   const [loadingParts, setLoadingParts] = useState(true);
   const [dataNotice, setDataNotice] = useState('');
@@ -213,6 +215,8 @@ function FinishedParts() {
   const assignCustomer = (customer: Customer) => { setAssignedCustomer(customer); setCustomerOpen(false); setCartOpen(true); };
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
+  if (inventorySection === 'supplies') return <SuppliesView onSelectParts={() => setInventorySection('parts')} />;
+
   return <div className="space-y-5">
     {dataNotice && <output className={`block rounded-xl px-4 py-3 text-sm ${dataNotice.includes('não') || dataNotice.includes('Não') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{dataNotice}</output>}
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -221,7 +225,8 @@ function FinishedParts() {
     </div>
 
     <div className="flex items-center rounded-xl bg-[#53647c] p-1 text-sm text-white shadow-sm">
-      <div className="flex items-center gap-2 rounded-lg bg-[#15233b] px-4 py-2.5 font-semibold"><PackageOpen className="size-4 text-[#ff8358]"/> Peças Finalizadas</div>
+      <button className="flex items-center gap-2 rounded-lg bg-[#15233b] px-4 py-2.5 font-semibold"><PackageOpen className="size-4 text-[#ff8358]"/> Peças Finalizadas</button>
+      <button onClick={() => setInventorySection('supplies')} className="flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-slate-100 transition hover:bg-white/10"><Boxes className="size-4"/> Insumos</button>
     </div>
 
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -254,6 +259,69 @@ function FinishedParts() {
     <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={finalizeSale} onAddToCustomer={openCustomerSelection} assignedCustomer={assignedCustomer} finalizing={finalizing}/>
     <CustomerOrderDialog open={customerOpen} onOpenChange={open => { setCustomerOpen(open); if (!open) setCartOpen(true); }} onSelect={assignCustomer}/>
   </div>;
+}
+
+function SuppliesView({ onSelectParts }: { onSelectParts: () => void }) {
+  const [supplies, setSupplies] = useState<Supply[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState('');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Supply | null>(null);
+  useEffect(() => {
+    void fetch('/api/supplies').then(async response => {
+      const result = await response.json() as Supply[] & { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível carregar os insumos');
+      setSupplies(result);
+      setNotice('');
+    }).catch(error => setNotice(error instanceof Error ? error.message : 'Não foi possível carregar os insumos.')).finally(() => setLoading(false));
+  }, []);
+  const openNew = () => { setEditing(null); setDialogOpen(true); };
+  const openEdit = (supply: Supply) => { setEditing(supply); setDialogOpen(true); };
+  const saveSupply = async (supply: Supply) => {
+    try {
+      const response = await fetch('/api/supplies', { method: editing ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(supply) });
+      const result = await response.json() as Supply & { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível salvar o insumo');
+      setSupplies(current => (editing ? current.map(item => item.id === result.id ? result : item) : [result, ...current]).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
+      setDialogOpen(false);
+      setNotice('Insumo salvo permanentemente no banco de dados.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Não foi possível salvar o insumo.'); }
+  };
+  const deleteSupply = async (supply: Supply) => {
+    try {
+      const response = await fetch(`/api/supplies?id=${encodeURIComponent(supply.id)}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Não foi possível excluir o insumo');
+      setSupplies(current => current.filter(item => item.id !== supply.id));
+      setNotice('Insumo removido do estoque.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Não foi possível excluir o insumo.'); }
+  };
+  return <div className="space-y-5">
+    {notice && <output className={`block rounded-xl px-4 py-3 text-sm ${notice.includes('não') || notice.includes('Não') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{notice}</output>}
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div><h2 className="flex items-center gap-2 text-2xl font-bold"><Boxes className="size-6 text-[#ff6b35]"/> Insumos e Materiais Extras</h2><p className="text-sm text-slate-500">Argolas, chaveiros, tags NFC, embalagens e outros materiais usados nos brindes.</p></div>
+      <Button onClick={openNew} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus/> Novo insumo</Button>
+    </div>
+    <div className="flex items-center rounded-xl bg-[#53647c] p-1 text-sm text-white shadow-sm">
+      <button onClick={onSelectParts} className="flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-slate-100 transition hover:bg-white/10"><PackageOpen className="size-4"/> Peças Finalizadas</button>
+      <button className="flex items-center gap-2 rounded-lg bg-[#15233b] px-4 py-2.5 font-semibold"><Boxes className="size-4 text-[#ff8358]"/> Insumos</button>
+    </div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{supplies.map(supply => <Card key={supply.id} className="gap-4 border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]">
+      <CardHeader className="flex flex-row items-start gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-orange-50 text-[#ff6b35]"><Boxes className="size-5"/></div><div className="min-w-0 flex-1"><Badge variant="outline" className="mb-2">{supply.type}</Badge><CardTitle className="truncate">{supply.name}</CardTitle></div><div className="flex"><Button onClick={() => openEdit(supply)} variant="ghost" size="icon" aria-label={`Editar ${supply.name}`}><Pencil/></Button><Button onClick={() => void deleteSupply(supply)} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600" aria-label={`Excluir ${supply.name}`}><Trash2/></Button></div></CardHeader>
+      <CardContent className="space-y-3 text-sm"><div className="flex justify-between border-t pt-3"><span className="text-slate-500">Em estoque</span><b>{supply.quantity} {supply.unit}</b></div><div className="flex justify-between"><span className="text-slate-500">Custo unitário</span><b>{brl(supply.unitCost)}/{supply.unit}</b></div><div className="flex justify-between"><span className="text-slate-500">Valor total em estoque</span><b className="text-[#e65d2c]">{brl(supply.quantity * supply.unitCost)}</b></div><p className="pt-1 text-xs text-slate-500">Fornecedor: <b className="text-slate-700">{supply.supplier || 'Não informado'}</b></p></CardContent>
+    </Card>)}{loading && <p className="col-span-full py-10 text-center text-sm text-slate-400">Carregando insumos salvos...</p>}{!loading && supplies.length === 0 && <div className="col-span-full rounded-xl border border-dashed bg-white px-5 py-12 text-center text-sm text-slate-400">Nenhum insumo cadastrado.</div>}</div>
+    <SupplyDialog key={editing?.id ?? 'new-supply'} open={dialogOpen} onOpenChange={setDialogOpen} initial={editing} onSave={saveSupply}/>
+  </div>;
+}
+
+function SupplyDialog({ open, onOpenChange, initial, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; initial: Supply | null; onSave: (supply: Supply) => void }) {
+  const [name, setName] = useState(initial?.name ?? '');
+  const [type, setType] = useState(initial?.type ?? 'Outro');
+  const [quantity, setQuantity] = useState(initial?.quantity ?? 0);
+  const [unit, setUnit] = useState(initial?.unit ?? 'un');
+  const [unitCost, setUnitCost] = useState(initial?.unitCost ?? 0);
+  const [supplier, setSupplier] = useState(initial?.supplier ?? '');
+  const submit = () => onSave({ id: initial?.id ?? '', name: name.trim(), type: type.trim() || 'Outro', quantity, unit: unit.trim() || 'un', unitCost, supplier: supplier.trim() });
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{initial ? 'Editar insumo' : 'Novo insumo'}</DialogTitle><DialogDescription>Cadastre materiais extras usados na montagem e entrega dos produtos.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="Nome do insumo *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Argola Italiana"/></Field><Field label="Tipo"><Input value={type} onChange={event => setType(event.target.value)} placeholder="Ex.: Embalagem, chaveiro ou outro"/></Field><Field label="Quantidade em estoque"><Input type="number" min="0" step=".01" value={quantity} onChange={event => setQuantity(Math.max(0, Number(event.target.value)))}/></Field><Field label="Unidade"><Input value={unit} onChange={event => setUnit(event.target.value)} placeholder="un, m, kg, ml..."/></Field><Field label="Custo unitário (R$)"><Input type="number" min="0" step=".01" value={unitCost} onChange={event => setUnitCost(Math.max(0, Number(event.target.value)))}/></Field><Field label="Fornecedor"><Input value={supplier} onChange={event => setSupplier(event.target.value)} placeholder="Ex.: Shopee"/></Field></div><div className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800">Valor atual em estoque: <b>{brl(quantity * unitCost)}</b></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!name.trim()} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{initial ? 'Salvar alterações' : 'Adicionar insumo'}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, assignedCustomer, finalizing }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; assignedCustomer: Customer | null; finalizing: boolean }) {
