@@ -29,7 +29,7 @@ const seedQuotes: Quote[] = [
   { id: 'ORC-1050', client: 'Clínica Orto+', item: 'Modelo anatômico', date: '27 ago', total: 'R$ 720,00', status: 'Enviado' },
 ];
 
-export function SystemApp() {
+export function SystemApp({ user, signOutPath }: { user: { name: string; email: string }; signOutPath: string }) {
   const [view, setView] = useState<View>('Visão geral');
   const [menu, setMenu] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
@@ -47,7 +47,7 @@ export function SystemApp() {
   };
 
   return <div className="min-h-screen bg-[#f4f7fb] text-[#172033]">
-    <Sidebar view={view} menu={menu} onClose={() => setMenu(false)} onSelect={selectView} />
+    <Sidebar view={view} menu={menu} onClose={() => setMenu(false)} onSelect={selectView} user={user} signOutPath={signOutPath} />
     {menu && <button aria-label="Fechar menu" className="fixed inset-0 z-30 bg-slate-950/40 lg:hidden" onClick={() => setMenu(false)} />}
     <main className="lg:pl-[238px]">
       <header className="sticky top-0 z-20 flex h-[76px] items-center border-b border-[#e4e9f1] bg-white/95 px-4 backdrop-blur sm:px-7">
@@ -57,26 +57,26 @@ export function SystemApp() {
         <Button onClick={() => setQuoteOpen(true)} className="ml-3 h-10 bg-[#ff6b35] px-4 text-white hover:bg-[#e85c2b]"><Plus /><span className="hidden sm:inline">Novo orçamento</span></Button>
       </header>
       <div className="mx-auto max-w-[1500px] p-4 sm:p-7">
-        {view === 'Visão geral' ? <Dashboard onNavigate={selectView} onNewQuote={() => setQuoteOpen(true)} /> : <Module view={view} quotes={quotes} onNewQuote={() => setQuoteOpen(true)} />}
+        {view === 'Visão geral' ? <Dashboard onNavigate={selectView} onNewQuote={() => setQuoteOpen(true)} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => setQuoteOpen(true)} user={user} />}
       </div>
     </main>
     <QuoteDialog open={quoteOpen} onOpenChange={setQuoteOpen} onSave={saveQuote} sequence={1053 + quotes.length - seedQuotes.length} />
-    {notice && <div role="status" className="fixed bottom-5 right-5 z-[70] rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-xl">{notice}</div>}
+    {notice && <output className="fixed bottom-5 right-5 z-[70] rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-xl">{notice}</output>}
   </div>;
 }
 
-function Sidebar({ view, menu, onClose, onSelect }: { view: View; menu: boolean; onClose: () => void; onSelect: (v: View) => void }) {
+function Sidebar({ view, menu, onClose, onSelect, user, signOutPath }: { view: View; menu: boolean; onClose: () => void; onSelect: (v: View) => void; user: { name: string; email: string }; signOutPath: string }) {
   return <aside className={`fixed inset-y-0 left-0 z-40 flex w-[238px] flex-col bg-[#101a2d] text-white transition-transform lg:translate-x-0 ${menu ? 'translate-x-0' : '-translate-x-full'}`}>
     <div className="flex h-[76px] items-center gap-3 border-b border-white/8 px-5"><div className="grid size-10 place-items-center rounded-xl bg-[#ff6b35] shadow-[0_8px_24px_rgba(255,107,53,.28)]"><Boxes className="size-5" /></div><div><p className="text-[17px] font-bold">Forma<span className="text-[#ff8c61]">3D</span></p><p className="text-[10px] uppercase tracking-[.17em] text-slate-400">Gestão de impressão</p></div><button className="ml-auto lg:hidden" aria-label="Fechar menu" onClick={onClose}><X className="size-5" /></button></div>
     <nav className="flex-1 space-y-1 px-3 py-5"><p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[.16em] text-slate-500">Operação</p>{nav.map(([Icon, label]) => <button key={label} onClick={() => onSelect(label)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${view === label ? 'bg-white/10 font-semibold text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}><Icon className={`size-[18px] ${view === label ? 'text-[#ff8358]' : ''}`} />{label}{label === 'Produção' && <span className="ml-auto rounded-full bg-[#ff6b35] px-1.5 text-[10px]">3</span>}</button>)}</nav>
-    <div className="m-3 rounded-xl border border-white/8 bg-white/5 p-3.5"><div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-full bg-[#2d4162] text-xs font-bold">RS</div><div><p className="text-sm font-medium">Renato Silva</p><p className="text-[11px] text-slate-400">Administrador</p></div></div></div>
+    <div className="m-3 rounded-xl border border-white/8 bg-white/5 p-3.5"><div className="flex items-center gap-3"><div className="grid size-9 shrink-0 place-items-center rounded-full bg-[#2d4162] text-xs font-bold">{initials(user.name)}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{user.name}</p><p className="text-[11px] text-slate-400">Administrador</p></div></div><a href={signOutPath} target="_top" className="mt-3 block border-t border-white/10 pt-2 text-center text-[11px] font-medium text-slate-400 transition hover:text-white">Sair do sistema</a></div>
   </aside>;
 }
 
-function Dashboard({ onNavigate, onNewQuote }: { onNavigate: (v: View) => void; onNewQuote: () => void }) {
+function Dashboard({ onNavigate, onNewQuote, userName }: { onNavigate: (v: View) => void; onNewQuote: () => void; userName: string }) {
   const jobs = [{ name: 'Bambu Lab X1C', detail: 'Maquete • peças 8/14', value: 64 }, { name: 'Creality K1 Max', detail: 'Engrenagem técnica', value: 82 }, { name: 'Elegoo Saturn 3', detail: 'Modelo anatômico', value: 18 }];
   return <>
-    <div className="mb-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><p className="text-sm text-slate-500">Bom dia, Renato.</p><h2 className="text-2xl font-bold tracking-[-.025em]">Sua produção está no ritmo certo.</h2></div><span className="text-xs text-slate-500">● Atualizado agora</span></div>
+    <div className="mb-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><p className="text-sm text-slate-500">Olá, {firstName(userName)}.</p><h2 className="text-2xl font-bold tracking-[-.025em]">Sua produção está no ritmo certo.</h2></div><span className="text-xs text-slate-500">● Atualizado agora</span></div>
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
       [HandCoins, 'Faturamento no mês', 'R$ 18.740', '+12,4%', 'green'], [ShoppingBag, 'Pedidos ativos', '12', '4 entregas nesta semana', 'blue'], [Factory, 'Máquinas em uso', '3 de 5', '60% da capacidade', 'orange'], [TrendingUp, 'Lucro estimado', 'R$ 6.920', '36,9% de margem', 'violet'],
     ].map(([Icon, label, value, detail, color]) => <Card key={String(label)} className="gap-3 border-0 bg-white py-4 shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between px-4"><CardTitle className="text-xs text-slate-500">{label}</CardTitle><div className={`metric-icon metric-${color}`}><Icon className="size-4" /></div></CardHeader><CardContent className="px-4"><p className="text-2xl font-bold">{value}</p><p className="mt-1 text-[11px] text-slate-500">{detail}</p></CardContent></Card>)}</section>
@@ -98,10 +98,10 @@ const moduleData: Record<Exclude<View, 'Visão geral' | 'Orçamentos' | 'Produç
   Financeiro: { title: 'Financeiro de agosto', detail: 'Receitas, custos e resultado operacional', headers: ['Lançamento', 'Categoria', 'Vencimento', 'Forma', 'Valor', 'Situação'], rows: [['Pedido #1048', 'Receita de venda', '29 ago', 'PIX', 'R$ 1.480,00', 'A receber'], ['Fornecedor 3D Fila', 'Material', '30 ago', 'Boleto', '- R$ 820,00', 'Agendado'], ['Pedido #1046', 'Receita de venda', '28 ago', 'Cartão', 'R$ 295,00', 'Recebido'], ['Energia elétrica', 'Custo fixo', '05 set', 'Débito', '- R$ 486,00', 'Agendado']], action: 'Novo lançamento' },
 };
 
-function Module({ view, quotes, onNewQuote }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void }) {
+function Module({ view, quotes, onNewQuote, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; user: { name: string; email: string } }) {
   if (view === 'Orçamentos') return <ModuleShell title={`${quotes.length} orçamentos recentes`} detail="Crie, envie e converta propostas em pedidos" action="Novo orçamento" onAction={onNewQuote}><DataTable headers={['Orçamento', 'Cliente', 'Item', 'Criado em', 'Valor', 'Status']} rows={quotes.map(q => [q.id, q.client, q.item, q.date, q.total, q.status])}/></ModuleShell>;
   if (view === 'Produção') return <Production />;
-  if (view === 'Configurações') return <SettingsView />;
+  if (view === 'Configurações') return <SettingsView user={user} />;
   const data = moduleData[view];
   return <ModuleShell title={data.title} detail={data.detail} action={data.action}><DataTable headers={data.headers} rows={data.rows}/>{view === 'Financeiro' && <div className="grid gap-4 border-t bg-slate-50 p-4 sm:grid-cols-3"><Summary label="Receitas" value="R$ 18.740,00" color="text-emerald-600"/><Summary label="Despesas" value="R$ 11.820,00" color="text-red-600"/><Summary label="Resultado" value="R$ 6.920,00" color="text-blue-600"/></div>}</ModuleShell>;
 }
@@ -117,9 +117,33 @@ function Production() {
   return <><div className="mb-5"><h2 className="text-2xl font-bold">Painel de produção</h2><p className="text-sm text-slate-500">Atualize cada trabalho conforme ele avança</p></div><div className="grid gap-4 lg:grid-cols-2">{items.map((item, i) => <Card key={item[0]} className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>{item[0]}</CardTitle><p className="text-xs text-slate-500">{item[1]}</p></div><Badge className="bg-blue-50 text-blue-700">{stages[i]}</Badge></CardHeader><CardContent><div className="mb-3 flex justify-between text-xs text-slate-500"><span>Responsável: {item[2]}</span><b>{item[3]}</b></div><Progress value={Number(item[3].replace('%',''))}/><Button onClick={() => advance(i)} variant="outline" className="mt-4 w-full">Avançar etapa <ChevronRight/></Button></CardContent></Card>)}</div></>;
 }
 
-function SettingsView() {
-  const [role, setRole] = useState('Administrador');
-  return <div className="grid gap-5 xl:grid-cols-[1fr_.8fr]"><div className="space-y-5"><Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader><CardTitle>Usuários e permissões</CardTitle><p className="text-xs text-slate-500">Três acessos internos, cada um com responsabilidades claras</p></CardHeader><CardContent className="space-y-3">{[['RS','Renato Silva','Administrador'], ['MC','Marina Costa','Vendas / Financeiro'], ['CL','Carlos Lima','Produção']].map(u => <div key={u[1]} className="flex items-center gap-3 rounded-xl border p-3"><div className="grid size-9 place-items-center rounded-full bg-slate-100 text-xs font-bold">{u[0]}</div><div><b className="text-sm">{u[1]}</b><p className="text-xs text-slate-500">{u[2]}</p></div><Badge variant="outline" className="ml-auto">Ativo</Badge></div>)}</CardContent></Card><Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader><CardTitle>Meu perfil de visualização</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">{['Administrador','Produção','Vendas / Financeiro'].map(r => <Button key={r} onClick={() => setRole(r)} variant={role === r ? 'default' : 'outline'}>{r}</Button>)}<p className="w-full text-xs text-slate-500">Perfil atual: {role}. As permissões finais são sempre validadas no servidor.</p></CardContent></Card></div><div className="space-y-5"><Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader><CardTitle>Parâmetros de precificação</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2"><Setting label="Energia (R$/kWh)" value="0,86"/><Setting label="Máquina (R$/hora)" value="3,40"/><Setting label="Embalagem padrão" value="8,00"/><Setting label="Margem padrão (%)" value="35"/><Setting label="Taxas / impostos (%)" value="8"/><Setting label="Perdas padrão (%)" value="5"/></CardContent></Card><Card className="border-0 bg-[#15233b] text-white shadow-sm ring-0"><CardHeader><CardTitle className="text-white">Pronto para evoluir</CardTitle></CardHeader><CardContent className="space-y-2 text-xs text-slate-300">{['PDF de orçamento com identidade visual','Envio por WhatsApp','Upload de STL / 3MF e fotos','Histórico completo de alterações','Integrações com marketplaces'].map(x => <p key={x}>○ {x}</p>)}</CardContent></Card></div></div>;
+function SettingsView({ user }: { user: { name: string; email: string } }) {
+  return <div className="grid gap-5 xl:grid-cols-[1fr_.8fr]">
+    <div className="space-y-5">
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]">
+        <CardHeader><CardTitle>Administradores autorizados</CardTitle><p className="text-xs text-slate-500">Acesso interno exclusivo dos donos da empresa</p></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50/60 p-4">
+            <div className="grid size-10 shrink-0 place-items-center rounded-full bg-[#15233b] text-xs font-bold text-white">{initials(user.name)}</div>
+            <div className="min-w-0"><b className="block truncate text-sm">{user.name}</b><p className="truncate text-xs text-slate-500">{user.email}</p><p className="mt-1 text-[11px] font-semibold text-emerald-700">Administrador</p></div>
+            <Badge className="ml-auto bg-emerald-100 text-emerald-700">Conectado</Badge>
+          </div>
+          <div className="flex gap-3 rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-600">
+            <UserCog className="mt-0.5 size-5 shrink-0 text-[#ff6b35]" />
+            <p>Não existem perfis operacionais separados. Cada dono autorizado pode acessar e administrar todos os módulos do sistema.</p>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]">
+        <CardHeader><CardTitle>Controle de acesso</CardTitle></CardHeader>
+        <CardContent><p className="text-xs leading-5 text-slate-500">Novos donos poderão ser convidados futuramente como administradores, sem criar níveis diferentes de permissão e sem precisar reestruturar o sistema.</p></CardContent>
+      </Card>
+    </div>
+    <div className="space-y-5">
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader><CardTitle>Parâmetros de precificação</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2"><Setting label="Energia (R$/kWh)" value="0,86"/><Setting label="Máquina (R$/hora)" value="3,40"/><Setting label="Embalagem padrão" value="8,00"/><Setting label="Margem padrão (%)" value="35"/><Setting label="Taxas / impostos (%)" value="8"/><Setting label="Perdas padrão (%)" value="5"/></CardContent></Card>
+      <Card className="border-0 bg-[#15233b] text-white shadow-sm ring-0"><CardHeader><CardTitle className="text-white">Pronto para evoluir</CardTitle></CardHeader><CardContent className="space-y-2 text-xs text-slate-300">{['PDF de orçamento com identidade visual','Envio por WhatsApp','Upload de STL / 3MF e fotos','Histórico completo de alterações','Integrações com marketplaces'].map(x => <p key={x}>○ {x}</p>)}</CardContent></Card>
+    </div>
+  </div>;
 }
 
 function QuoteDialog({ open, onOpenChange, onSave, sequence }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (q: Quote, p: Record<string, unknown>) => void; sequence: number }) {
@@ -136,3 +160,5 @@ function AlertBox({ icon: Icon, title, detail, tone }: { icon: React.ElementType
 function Summary({ label, value, color }: { label: string; value: string; color: string }) { return <div><p className="text-xs text-slate-500">{label}</p><p className={`text-xl font-bold ${color}`}>{value}</p></div>; }
 function Setting({ label, value }: { label: string; value: string }) { return <Field label={label}><Input defaultValue={value}/></Field>; }
 function Field({ label, children, dark = false }: { label: string; children: React.ReactNode; dark?: boolean }) { return <label className={`text-xs font-medium ${dark ? 'text-slate-300' : 'text-slate-600'}`}>{label}<div className="mt-1">{children}</div></label>; }
+function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'AD'; }
+function firstName(name: string) { return name.trim().split(/\s+/)[0] || 'Administrador'; }
