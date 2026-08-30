@@ -50,11 +50,10 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
     <Sidebar view={view} menu={menu} onClose={() => setMenu(false)} onSelect={selectView} user={user} signOutPath={signOutPath} />
     {menu && <button aria-label="Fechar menu" className="fixed inset-0 z-30 bg-slate-950/40 lg:hidden" onClick={() => setMenu(false)} />}
     <main className="lg:pl-[238px]">
-      <header className="sticky top-0 z-20 flex h-[76px] items-center border-b border-[#e4e9f1] bg-white/95 px-4 backdrop-blur sm:px-7">
-        <button className="mr-3 lg:hidden" aria-label="Abrir menu" onClick={() => setMenu(true)}><Menu /></button>
-        <div><h1 className="text-lg font-bold tracking-tight sm:text-xl">{view}</h1><p className="hidden text-xs text-slate-500 sm:block">Imprimo3DLab • Sexta-feira, 29 de agosto</p></div>
-        <div className="ml-auto hidden w-64 items-center gap-2 rounded-lg border border-[#dfe5ee] bg-[#f8fafc] px-3 md:flex"><Search className="size-4 text-slate-400" /><input className="h-9 w-full bg-transparent text-sm outline-none" placeholder="Buscar em todo o sistema..." /></div>
-        <Button onClick={() => setQuoteOpen(true)} className="ml-3 h-10 bg-[#ff6b35] px-4 text-white hover:bg-[#e85c2b]"><Plus /><span className="hidden sm:inline">Novo orçamento</span></Button>
+      <header className="sticky top-0 z-20 flex h-14 items-center border-b border-[#e4e9f1] bg-white/95 px-4 backdrop-blur lg:hidden">
+        <button aria-label="Abrir menu" onClick={() => setMenu(true)}><Menu /></button>
+        <span className="ml-3 text-sm font-bold">Imprimo3DLab</span>
+        <Button onClick={() => setQuoteOpen(true)} size="icon" aria-label="Novo orçamento" className="ml-auto bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus /></Button>
       </header>
       <div className="mx-auto max-w-[1500px] p-4 sm:p-7">
         {view === 'Visão geral' ? <Dashboard onNavigate={selectView} onNewQuote={() => setQuoteOpen(true)} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => setQuoteOpen(true)} user={user} />}
@@ -67,7 +66,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
 
 function Sidebar({ view, menu, onClose, onSelect, user, signOutPath }: { view: View; menu: boolean; onClose: () => void; onSelect: (v: View) => void; user: { name: string; email: string }; signOutPath: string }) {
   return <aside className={`fixed inset-y-0 left-0 z-40 flex w-[238px] flex-col bg-[var(--brand-blue)] text-white transition-transform lg:translate-x-0 ${menu ? 'translate-x-0' : '-translate-x-full'}`}>
-    <div className="flex h-[76px] items-center gap-2.5 border-b border-white/20 px-4"><img src="/imprimo3dlab-logo-white.png" alt="" className="h-11 w-12 shrink-0 object-contain"/><div className="min-w-0"><p className="truncate text-[16px] font-bold tracking-tight">Imprimo3DLab</p><p className="text-[10px] uppercase tracking-[.17em] text-white">Gerenciamento</p></div><button className="ml-auto lg:hidden" aria-label="Fechar menu" onClick={onClose}><X className="size-5" /></button></div>
+    <div className="flex h-[76px] items-center gap-2 border-b border-white/20 px-3"><img src="/imprimo3dlab-logo-white.png" alt="" className="h-14 w-16 shrink-0 object-contain"/><div className="min-w-0"><p className="truncate text-[16px] font-bold tracking-tight">Imprimo3DLab</p><p className="text-[10px] uppercase tracking-[.17em] text-white">Gerenciamento</p></div><button className="ml-auto lg:hidden" aria-label="Fechar menu" onClick={onClose}><X className="size-5" /></button></div>
     <nav className="flex-1 space-y-1 px-3 py-5"><p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[.16em] text-white">Operação</p>{nav.map(([Icon, label]) => <button key={label} onClick={() => onSelect(label)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${view === label ? 'bg-white font-semibold text-[var(--brand-blue)]' : 'text-white hover:bg-white/15'}`}><Icon className={`size-[18px] ${view === label ? 'text-[#ff8358]' : ''}`} />{label}{label === 'Produção' && <span className="ml-auto rounded-full bg-[#ff6b35] px-1.5 text-[10px] text-white">3</span>}</button>)}</nav>
     <div className="m-3 rounded-xl border border-white/20 bg-black/10 p-3.5"><div className="flex items-center gap-3"><div className="grid size-9 shrink-0 place-items-center rounded-full bg-white/20 text-xs font-bold">{initials(user.name)}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{user.name}</p><p className="text-[11px] text-white">Administrador</p></div></div><a href={signOutPath} target="_top" className="mt-3 block border-t border-white/20 pt-2 text-center text-[11px] font-medium text-white transition hover:bg-white/10">Sair do sistema</a></div>
   </aside>;
