@@ -22,6 +22,8 @@ type SelectedSupply = { id: string; name: string; quantity: number; unit: string
 
 const money = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 const numeric = (value: string) => Math.max(0, Number(value) || 0);
+const CALCULATOR_DRAFT_KEY = 'imprimo3dlab:calculator-draft:v1';
+const savedNumber = (value: unknown, fallback: number) => typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 
 export function CalculatorView({ onQuoteSaved }: { onQuoteSaved: (quote: CalculatorQuote) => void }) {
   const [productName, setProductName] = useState(''); const [quantity, setQuantity] = useState(1); const [colors, setColors] = useState('');
@@ -34,8 +36,29 @@ export function CalculatorView({ onQuoteSaved }: { onQuoteSaved: (quote: Calcula
   const [saved, setSaved] = useState<SavedConfig[]>([]); const [selected, setSelected] = useState(''); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState<'product' | 'quote' | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewUnitPrice, setReviewUnitPrice] = useState(0);
+  const [draftLoaded, setDraftLoaded] = useState(false);
 
   useEffect(() => { void Promise.all([fetch('/api/calculator'), fetch('/api/supplies')]).then(async ([configsResponse, suppliesResponse]) => { if (configsResponse.ok) setSaved(await configsResponse.json() as SavedConfig[]); if (suppliesResponse.ok) setSupplies(await suppliesResponse.json() as Supply[]); }).catch(() => undefined); }, []);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CALCULATOR_DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as Partial<SavedConfig> & { productionMinutes?: number };
+        setProductName(draft.productName ?? ''); setQuantity(savedNumber(draft.quantity, 1)); setColors(draft.colors ?? ''); setDescription(draft.description ?? ''); setObservations(draft.observations ?? ''); setExtras(draft.extras ?? '');
+        setMaterialName(draft.materialName ?? 'PLA'); setMaterialCostKg(savedNumber(draft.materialCostKg, 95)); setMaterialGrams(savedNumber(draft.materialGrams, 180)); setSelectedSupplies(draft.selectedSupplies ?? []);
+        setProductionHours(savedNumber(draft.productionHours, 9)); setProductionMinutes(savedNumber(draft.productionMinutes, 30)); setPrinterPowerWatts(savedNumber(draft.printerPowerWatts, 1000)); setEnergyRate(savedNumber(draft.energyRate, .86));
+        setMachineRate(savedNumber(draft.machineRate, 3.4)); setMaintenance(savedNumber(draft.maintenance, .1)); setRiskPercent(savedNumber(draft.riskPercent, 5)); setPackaging(savedNumber(draft.packaging, 8)); setShipping(savedNumber(draft.shipping, 0)); setOtherCosts(savedNumber(draft.otherCosts, 0)); setFeesPercent(savedNumber(draft.feesPercent, 8)); setMarginPercent(savedNumber(draft.marginPercent, 35));
+      }
+    } catch { /* Mantém os valores padrão quando o rascunho do navegador não puder ser lido. */ }
+    setDraftLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!draftLoaded) return;
+    const timer = window.setTimeout(() => {
+      window.localStorage.setItem(CALCULATOR_DRAFT_KEY, JSON.stringify({ productName, quantity, colors, description, observations, extras, materialName, materialCostKg, materialGrams, selectedSupplies, productionHours, productionMinutes, printerPowerWatts, energyRate, machineRate, maintenance, riskPercent, packaging, shipping, otherCosts, feesPercent, marginPercent }));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [draftLoaded, productName, quantity, colors, description, observations, extras, materialName, materialCostKg, materialGrams, selectedSupplies, productionHours, productionMinutes, printerPowerWatts, energyRate, machineRate, maintenance, riskPercent, packaging, shipping, otherCosts, feesPercent, marginPercent]);
 
   const supplyCost = selectedSupplies.reduce((total, item) => total + item.quantity * item.unitCost, 0);
   const productionTimeHours = productionHours + productionMinutes / 60;
