@@ -19,11 +19,11 @@ export default async function LoginPage() {
   const primaryLabel = user ? 'Continuar para o sistema' : 'Entrar como administrador';
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#0f192b] px-5 py-8 text-white sm:px-8 lg:grid lg:place-items-center">
+    <main className="relative min-h-screen overflow-hidden bg-[var(--brand-blue)] px-5 py-8 text-white sm:px-8 lg:grid lg:place-items-center">
       <div className="pointer-events-none absolute -left-32 -top-32 size-96 rounded-full bg-[#ff6b35]/15 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-36 -right-24 size-[30rem] rounded-full bg-blue-500/10 blur-3xl" />
 
-      <div className="relative mx-auto grid w-full max-w-6xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#15233b] shadow-2xl shadow-black/30 lg:grid-cols-[1.05fr_.95fr]">
+      <div className="relative mx-auto grid w-full max-w-6xl overflow-hidden rounded-[2rem] border border-white/20 bg-black/10 shadow-2xl shadow-black/20 lg:grid-cols-[1.05fr_.95fr]">
         <section className="flex min-h-[360px] flex-col justify-between p-7 sm:p-10 lg:min-h-[660px] lg:p-14">
           <div className="flex items-center gap-3">
             <div className="grid size-11 place-items-center rounded-xl bg-[#ff6b35] shadow-[0_10px_28px_rgba(255,107,53,.3)]">
@@ -31,7 +31,7 @@ export default async function LoginPage() {
             </div>
             <div>
               <p className="text-xl font-bold">Forma<span className="text-[#ff8c61]">3D</span></p>
-              <p className="text-[10px] uppercase tracking-[.18em] text-slate-400">Gestão de impressão</p>
+              <p className="text-[10px] uppercase tracking-[.18em] text-white">Gestão de impressão</p>
             </div>
           </div>
 
@@ -42,12 +42,12 @@ export default async function LoginPage() {
             <h1 className="mt-6 text-4xl font-bold leading-[1.08] tracking-[-.04em] sm:text-5xl">
               Sua operação 3D, organizada em um só lugar.
             </h1>
-            <p className="mt-5 max-w-lg text-sm leading-6 text-slate-300 sm:text-base">
+            <p className="mt-5 max-w-lg text-sm leading-6 text-white sm:text-base">
               Acesse orçamentos, pedidos, produção, estoque, clientes e financeiro com total controle dos donos da empresa.
             </p>
           </div>
 
-          <div className="grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
+          <div className="grid gap-3 text-sm text-white sm:grid-cols-2">
             <p className="flex items-center gap-2"><CheckCircle2 className="size-4 text-emerald-400" /> Dados protegidos</p>
             <p className="flex items-center gap-2"><CheckCircle2 className="size-4 text-emerald-400" /> Acesso somente autorizado</p>
           </div>

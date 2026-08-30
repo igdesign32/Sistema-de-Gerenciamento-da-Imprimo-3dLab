@@ -53,6 +53,9 @@ body {
 }
 
 :root {
+  --brand-blue: #0068ff;
+  --brand-blue-deep: #0058d9;
+  --brand-blue-soft: #2f85ff;
   --background: #f4f7fb;
   --foreground: #172033;
   --card: oklch(1 0 0);
@@ -88,6 +91,9 @@ body {
 }
 
 .dark {
+  --brand-blue: #0068ff;
+  --brand-blue-deep: #0058d9;
+  --brand-blue-soft: #2f85ff;
   --background: #0d1728;
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
