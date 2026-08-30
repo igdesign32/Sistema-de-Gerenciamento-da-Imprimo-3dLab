@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Boxes, Calculator, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Factory,
   FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Pencil, Plus, Search,
@@ -100,39 +100,93 @@ const moduleData: Record<Exclude<View, 'Visão geral' | 'Orçamentos' | 'Produç
 
 function Module({ view, quotes, onNewQuote, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; user: { name: string; email: string } }) {
   if (view === 'Orçamentos') return <ModuleShell title={`${quotes.length} orçamentos recentes`} detail="Crie, envie e converta propostas em pedidos" action="Novo orçamento" onAction={onNewQuote}><DataTable headers={['Orçamento', 'Cliente', 'Item', 'Criado em', 'Valor', 'Status']} rows={quotes.map(q => [q.id, q.client, q.item, q.date, q.total, q.status])}/></ModuleShell>;
+  if (view === 'Pedidos') return <OrdersView />;
   if (view === 'Produção') return <Production />;
   if (view === 'Estoque') return <FinishedParts />;
+  if (view === 'Clientes') return <CustomersView />;
+  if (view === 'Financeiro') return <FinanceView />;
   if (view === 'Configurações') return <SettingsView user={user} />;
   const data = moduleData[view];
   return <ModuleShell title={data.title} detail={data.detail} action={data.action}><DataTable headers={data.headers} rows={data.rows}/>{view === 'Financeiro' && <div className="grid gap-4 border-t bg-slate-50 p-4 sm:grid-cols-3"><Summary label="Receitas" value="R$ 18.740,00" color="text-emerald-600"/><Summary label="Despesas" value="R$ 11.820,00" color="text-red-600"/><Summary label="Resultado" value="R$ 6.920,00" color="text-blue-600"/></div>}</ModuleShell>;
 }
 
-type FinishedPart = { id: string; name: string; detail: string; stock: number; color: string; cost: number; price: number };
-type CartItem = { partId: string; quantity: number; unitPrice: number };
+function OrdersView() {
+  const [orders, setOrders] = useState<Array<{ id: string; customer: string; items: string; quantity: number; total: number; status: string; createdAt: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { void fetch('/api/orders').then(response => response.ok ? response.json() : Promise.reject()).then(result => setOrders(result as typeof orders)).catch(() => setOrders([])).finally(() => setLoading(false)); }, []);
+  const rows = orders.map(order => [order.id, order.customer, `${order.items} · ${order.quantity} un.`, order.createdAt, brl(order.total), order.status]);
+  return <ModuleShell title={`${orders.length} pedidos salvos`} detail="Pedidos finalizados pelo carrinho de peças" action="Novo pedido"><DataTable headers={['Pedido','Cliente','Itens','Criado em','Valor','Status']} rows={rows}/>{loading && <p className="p-6 text-center text-sm text-slate-400">Carregando pedidos...</p>}{!loading && !orders.length && <p className="p-6 text-center text-sm text-slate-400">Nenhum pedido finalizado.</p>}</ModuleShell>;
+}
 
-const finishedPartsSeed: FinishedPart[] = [
-  { id: '001', name: 'Abelha articulada', detail: 'Modelo decorativo', stock: 12, color: 'Amarelo Velvet', cost: 5.82, price: 15 },
-  { id: '002', name: 'Suporte para celular', detail: 'Linha escritório', stock: 8, color: 'Preto', cost: 7.4, price: 22 },
-  { id: '003', name: 'Vaso geométrico', detail: 'Coleção decorativa', stock: 4, color: 'Branco', cost: 12.6, price: 35 },
-  { id: '004', name: 'Chaveiro personalizado', detail: 'Linha personalizada', stock: 25, color: 'Laranja', cost: 2.15, price: 8 },
-];
+function CustomersView() {
+  const [customers, setCustomers] = useState<Array<Customer & { orders: number; lastOrder: string; total: number }>>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { void fetch('/api/customers').then(response => response.ok ? response.json() : Promise.reject()).then(result => setCustomers(result as typeof customers)).catch(() => setCustomers([])).finally(() => setLoading(false)); }, []);
+  const rows = customers.map(customer => [customer.name, customer.phone || customer.email || 'Sem contato', String(customer.orders), customer.lastOrder, brl(customer.total), 'Ativo']);
+  return <ModuleShell title={`${customers.length} clientes cadastrados`} detail="Clientes e histórico das vendas registradas" action="Novo cliente"><DataTable headers={['Cliente','Contato','Pedidos','Último pedido','Faturamento','Situação']} rows={rows}/>{loading && <p className="p-6 text-center text-sm text-slate-400">Carregando clientes...</p>}</ModuleShell>;
+}
+
+function FinanceView() {
+  const [transactions, setTransactions] = useState<Array<{ id: string; orderId: string; type: string; category: string; description: string; amount: number; paymentMethod: string; status: string; dueAt: string }>>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { void fetch('/api/transactions').then(response => response.ok ? response.json() : Promise.reject()).then(result => setTransactions(result as typeof transactions)).catch(() => setTransactions([])).finally(() => setLoading(false)); }, []);
+  const income = transactions.filter(item => item.type === 'Receita').reduce((total, item) => total + item.amount, 0);
+  const expenses = transactions.filter(item => item.type === 'Despesa').reduce((total, item) => total + item.amount, 0);
+  const rows = transactions.map(item => [item.orderId, item.category, item.dueAt, item.paymentMethod, brl(item.amount), item.status]);
+  return <ModuleShell title="Financeiro das vendas" detail="Receitas geradas pelos pedidos finalizados" action="Novo lançamento"><DataTable headers={['Pedido','Categoria','Data','Forma','Valor','Situação']} rows={rows}/>{loading && <p className="p-6 text-center text-sm text-slate-400">Carregando lançamentos...</p>}<div className="grid gap-4 border-t bg-slate-50 p-4 sm:grid-cols-3"><Summary label="Receitas" value={brl(income)} color="text-emerald-600"/><Summary label="Despesas" value={brl(expenses)} color="text-red-600"/><Summary label="Resultado" value={brl(income - expenses)} color="text-blue-600"/></div></ModuleShell>;
+}
+
+type FinishedPart = { id: string; sku: string; name: string; detail: string; stock: number; color: string; cost: number; price: number };
+type CartItem = { partId: string; quantity: number; unitPrice: number };
+type Customer = { id: string; name: string; phone: string; email: string };
 
 function FinishedParts() {
-  const [parts, setParts] = useState(finishedPartsSeed);
+  const [parts, setParts] = useState<FinishedPart[]>([]);
+  const [loadingParts, setLoadingParts] = useState(true);
+  const [dataNotice, setDataNotice] = useState('');
   const [query, setQuery] = useState('');
   const [pieceOpen, setPieceOpen] = useState(false);
   const [editing, setEditing] = useState<FinishedPart | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
-  const [assignedCustomer, setAssignedCustomer] = useState('');
-  const filteredParts = parts.filter(part => `${part.id} ${part.name} ${part.detail} ${part.color}`.toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR')));
+  const [assignedCustomer, setAssignedCustomer] = useState<Customer | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
+  const loadParts = async () => {
+    try {
+      const response = await fetch('/api/inventory');
+      if (!response.ok) throw new Error('Não foi possível carregar o estoque');
+      setParts(await response.json() as FinishedPart[]);
+      setDataNotice('');
+    } catch { setDataNotice('Não foi possível acessar o banco de dados. Tente novamente.'); }
+    finally { setLoadingParts(false); }
+  };
+  useEffect(() => { void loadParts(); }, []);
+  const filteredParts = parts.filter(part => `${part.sku} ${part.name} ${part.detail} ${part.color}`.toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR')));
   const stockUnits = parts.reduce((total, part) => total + part.stock, 0);
   const stockValue = parts.reduce((total, part) => total + part.stock * part.price, 0);
   const stockCost = parts.reduce((total, part) => total + part.stock * part.cost, 0);
   const openNew = () => { setEditing(null); setPieceOpen(true); };
   const openEdit = (part: FinishedPart) => { setEditing(part); setPieceOpen(true); };
-  const savePart = (part: FinishedPart) => { setParts(current => editing ? current.map(item => item.id === part.id ? part : item) : [part, ...current]); setPieceOpen(false); };
+  const savePart = async (part: FinishedPart) => {
+    try {
+      const response = await fetch('/api/inventory', { method: editing ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(part) });
+      const result = await response.json() as FinishedPart & { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível salvar a peça');
+      setParts(current => editing ? current.map(item => item.id === result.id ? result : item) : [result, ...current]);
+      setPieceOpen(false);
+      setDataNotice('Peça salva permanentemente no banco de dados.');
+    } catch (error) { setDataNotice(error instanceof Error ? error.message : 'Não foi possível salvar a peça.'); }
+  };
+  const deletePart = async (part: FinishedPart) => {
+    try {
+      const response = await fetch(`/api/inventory?id=${encodeURIComponent(part.id)}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Não foi possível excluir a peça');
+      setParts(current => current.filter(item => item.id !== part.id));
+      setCart(current => current.filter(item => item.partId !== part.id));
+      setDataNotice('Peça removida do estoque.');
+    } catch (error) { setDataNotice(error instanceof Error ? error.message : 'Não foi possível excluir a peça.'); }
+  };
   const addToCart = (part: FinishedPart) => {
     setCart(current => {
       const existing = current.find(item => item.partId === part.id);
@@ -141,20 +195,26 @@ function FinishedParts() {
     });
     setCartOpen(true);
   };
-  const finalizeSale = () => {
-    setParts(current => current.map(part => {
-      const item = cart.find(cartItem => cartItem.partId === part.id);
-      return item ? { ...part, stock: Math.max(0, part.stock - item.quantity) } : part;
-    }));
-    setCart([]);
-    setAssignedCustomer('');
-    setCartOpen(false);
+  const finalizeSale = async () => {
+    setFinalizing(true);
+    try {
+      const response = await fetch('/api/orders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ customerId: assignedCustomer?.id ?? null, items: cart }) });
+      const result = await response.json() as { id?: string; error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível finalizar o pedido');
+      setCart([]);
+      setAssignedCustomer(null);
+      setCartOpen(false);
+      setDataNotice(`${result.id} salvo. Estoque, pedido e financeiro atualizados.`);
+      await loadParts();
+    } catch (error) { setDataNotice(error instanceof Error ? error.message : 'Não foi possível finalizar o pedido.'); }
+    finally { setFinalizing(false); }
   };
   const openCustomerSelection = () => { setCartOpen(false); setCustomerOpen(true); };
-  const assignCustomer = (customer: string) => { setAssignedCustomer(customer); setCustomerOpen(false); setCartOpen(true); };
+  const assignCustomer = (customer: Customer) => { setAssignedCustomer(customer); setCustomerOpen(false); setCartOpen(true); };
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
   return <div className="space-y-5">
+    {dataNotice && <output className={`block rounded-xl px-4 py-3 text-sm ${dataNotice.includes('não') || dataNotice.includes('Não') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{dataNotice}</output>}
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div><h2 className="text-2xl font-bold">Peças Finalizadas</h2><p className="text-sm text-slate-500">Controle os produtos impressos e prontos para venda.</p></div>
       <div className="flex gap-2"><Button onClick={() => setCartOpen(true)} variant="outline" className="relative"><ShoppingCart/> Carrinho{cartCount > 0 && <Badge className="ml-1 bg-[#15233b] text-white">{cartCount}</Badge>}</Button><Button onClick={openNew} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus/> Nova peça</Button></div>
@@ -179,24 +239,24 @@ function FinishedParts() {
         <tbody>{filteredParts.map(part => {
           const margin = Math.round((1 - part.cost / part.price) * 100);
           return <tr key={part.id} className="border-b last:border-0 hover:bg-slate-50/70">
-            <td className="px-4 py-4"><b className="text-sm">{part.id} — {part.name}</b><p className="mt-0.5 text-[11px] italic text-slate-400">{part.detail}</p></td>
+            <td className="px-4 py-4"><b className="text-sm">{part.sku} — {part.name}</b><p className="mt-0.5 text-[11px] italic text-slate-400">{part.detail}</p></td>
             <td className="px-4 py-4"><Badge variant="secondary" className="bg-slate-100 text-slate-700">{part.stock} un.</Badge></td>
             <td className="px-4 py-4"><Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700">● {part.color}</Badge></td>
             <td className="px-4 py-4 text-xs text-slate-600">{brl(part.cost)}</td>
             <td className="px-4 py-4 text-sm font-bold text-[#e65d2c]">{brl(part.price)}</td>
             <td className="px-4 py-4 text-sm font-bold text-emerald-600">{margin}%</td>
-            <td className="px-4 py-4"><div className="flex items-center gap-1"><Button onClick={() => addToCart(part)} disabled={part.stock === 0} variant="ghost" size="sm" className="text-[#e65d2c]"><ShoppingCart/> Vender</Button><Button onClick={() => openEdit(part)} aria-label={`Editar ${part.name}`} variant="ghost" size="icon"><Pencil/></Button><Button onClick={() => setParts(current => current.filter(item => item.id !== part.id))} aria-label={`Excluir ${part.name}`} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600"><Trash2/></Button></div></td>
+            <td className="px-4 py-4"><div className="flex items-center gap-1"><Button onClick={() => addToCart(part)} disabled={part.stock === 0} variant="ghost" size="sm" className="text-[#e65d2c]"><ShoppingCart/> Vender</Button><Button onClick={() => openEdit(part)} aria-label={`Editar ${part.name}`} variant="ghost" size="icon"><Pencil/></Button><Button onClick={() => void deletePart(part)} aria-label={`Excluir ${part.name}`} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600"><Trash2/></Button></div></td>
           </tr>;
-        })}{filteredParts.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">Nenhuma peça encontrada.</td></tr>}</tbody>
+        })}{loadingParts && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">Carregando peças salvas...</td></tr>}{!loadingParts && filteredParts.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">Nenhuma peça encontrada.</td></tr>}</tbody>
       </table></div>
     </Card>
-    <PieceDialog key={editing?.id ?? 'new'} open={pieceOpen} onOpenChange={setPieceOpen} initial={editing} nextId={String(Math.max(0, ...parts.map(part => Number(part.id) || 0)) + 1).padStart(3, '0')} onSave={savePart}/>
-    <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={finalizeSale} onAddToCustomer={openCustomerSelection} assignedCustomer={assignedCustomer}/>
+    <PieceDialog key={editing?.id ?? 'new'} open={pieceOpen} onOpenChange={setPieceOpen} initial={editing} onSave={savePart}/>
+    <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={finalizeSale} onAddToCustomer={openCustomerSelection} assignedCustomer={assignedCustomer} finalizing={finalizing}/>
     <CustomerOrderDialog open={customerOpen} onOpenChange={open => { setCustomerOpen(open); if (!open) setCartOpen(true); }} onSelect={assignCustomer}/>
   </div>;
 }
 
-function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, assignedCustomer }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; assignedCustomer: string }) {
+function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, assignedCustomer, finalizing }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; assignedCustomer: Customer | null; finalizing: boolean }) {
   const rows = cart.flatMap(item => { const part = parts.find(candidate => candidate.id === item.partId); return part ? [{ item, part }] : []; });
   const totalCost = rows.reduce((total, row) => total + row.part.cost * row.item.quantity, 0);
   const totalSale = rows.reduce((total, row) => total + row.item.unitPrice * row.item.quantity, 0);
@@ -206,7 +266,7 @@ function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFina
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[92vh] overflow-y-auto border-slate-700 bg-[#101a2d] text-white sm:max-w-2xl">
     <DialogHeader><DialogTitle className="flex items-center gap-2 text-xl text-white"><ShoppingCart className="size-5 text-[#ff6b35]"/> Carrinho de Vendas</DialogTitle><DialogDescription className="text-slate-400">Ajuste preços, quantidades e finalize o pedido ou imprima o orçamento.</DialogDescription></DialogHeader>
     {rows.length === 0 ? <div className="rounded-xl border border-dashed border-slate-600 px-5 py-12 text-center"><ShoppingCart className="mx-auto size-8 text-slate-500"/><p className="mt-3 text-sm font-medium">Seu carrinho está vazio</p><p className="mt-1 text-xs text-slate-400">Clique em “Vender” em uma peça para adicioná-la.</p></div> : <div className="space-y-3">{rows.map(({ item, part }) => <div key={part.id} className="rounded-xl border border-slate-700 bg-[#15233b] p-4">
-      <div className="flex items-start justify-between gap-3"><div><b className="text-sm">{part.id} — {part.name}</b><p className="text-[11px] text-slate-400">Estoque disponível: {part.stock} un.</p></div><Button onClick={() => onCartChange(cart.filter(candidate => candidate.partId !== part.id))} aria-label={`Remover ${part.name} do carrinho`} variant="ghost" size="icon" className="text-slate-400 hover:bg-white/10 hover:text-white"><X/></Button></div>
+      <div className="flex items-start justify-between gap-3"><div><b className="text-sm">{part.sku} — {part.name}</b><p className="text-[11px] text-slate-400">Estoque disponível: {part.stock} un.</p></div><Button onClick={() => onCartChange(cart.filter(candidate => candidate.partId !== part.id))} aria-label={`Remover ${part.name} do carrinho`} variant="ghost" size="icon" className="text-slate-400 hover:bg-white/10 hover:text-white"><X/></Button></div>
       <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1.35fr]">
         <div><p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Quantidade</p><div className="flex items-center gap-1"><Button onClick={() => update(part.id, { quantity: Math.max(1, item.quantity - 1) })} variant="outline" size="icon" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Minus/></Button><div className="grid h-9 min-w-16 place-items-center rounded-lg bg-[#3a4a62] text-sm font-bold">{item.quantity}</div><Button onClick={() => update(part.id, { quantity: Math.min(part.stock, item.quantity + 1) })} variant="outline" size="icon" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Plus/></Button></div></div>
         <Field label="Preço unitário (R$)" dark><Input type="number" min="0" step=".01" value={item.unitPrice} onChange={event => update(part.id, { unitPrice: Math.max(0, Number(event.target.value)) })} className="border-slate-600 bg-[#3a4a62] text-white"/></Field>
@@ -214,43 +274,66 @@ function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFina
       <div className="mt-4 flex justify-between border-t border-slate-700 pt-3 text-xs text-slate-400"><span>Custo: <b className="text-slate-200">{brl(part.cost * item.quantity)}</b></span><span className="font-semibold text-[#ff8358]">Subtotal: {brl(item.unitPrice * item.quantity)}</span></div>
     </div>)}</div>}
     {rows.length > 0 && <><div className="rounded-xl border border-[#ff6b35]/45 bg-[#182033] p-4"><div className="flex justify-between text-sm text-slate-300"><span>↗ Custo total</span><b className="text-white">{brl(totalCost)}</b></div><div className="mt-2 flex justify-between text-sm text-slate-300"><span>$ Lucro estimado</span><b className="text-emerald-400">{brl(estimatedProfit)}</b></div><div className="mt-4 flex items-center justify-between border-t border-slate-700 pt-4"><b>Total da venda</b><b className="text-2xl text-[#ff6b35]">{brl(totalSale)}</b></div></div>
-      {assignedCustomer && <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"><UserPlus className="size-4"/> Pedido vinculado a <b>{assignedCustomer}</b></div>}
-      <div className="grid gap-2 sm:grid-cols-3"><Button onClick={() => window.print()} variant="outline" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Printer/> Imprimir orçamento</Button><Button onClick={onAddToCustomer} variant="outline" className="border-[#ff8358]/50 bg-[#ff6b35]/10 text-[#ff9b77] hover:bg-[#ff6b35]/20 hover:text-white"><UserPlus/> {assignedCustomer ? 'Trocar cliente' : 'Adicionar ao cliente'}</Button><Button onClick={onFinalize} className="bg-[#ff6b35] text-white shadow-lg shadow-[#ff6b35]/20 hover:bg-[#e85c2b]"><CheckCircle2/> Finalizar pedido</Button></div>
+      {assignedCustomer && <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"><UserPlus className="size-4"/> Pedido vinculado a <b>{assignedCustomer.name}</b></div>}
+      <div className="grid gap-2 sm:grid-cols-3"><Button onClick={() => window.print()} variant="outline" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Printer/> Imprimir orçamento</Button><Button onClick={onAddToCustomer} variant="outline" className="border-[#ff8358]/50 bg-[#ff6b35]/10 text-[#ff9b77] hover:bg-[#ff6b35]/20 hover:text-white"><UserPlus/> {assignedCustomer ? 'Trocar cliente' : 'Adicionar ao cliente'}</Button><Button onClick={onFinalize} disabled={finalizing} className="bg-[#ff6b35] text-white shadow-lg shadow-[#ff6b35]/20 hover:bg-[#e85c2b]"><CheckCircle2/> {finalizing ? 'Salvando...' : 'Finalizar pedido'}</Button></div>
       <p className="text-center text-[10px] text-slate-500">“Finalizar pedido” desconta automaticamente as quantidades do estoque.</p></>}
   </DialogContent></Dialog>;
 }
 
-const existingCustomers = [
-  { name: 'Lumina Arquitetura', phone: '(11) 99945-2231' },
-  { name: 'Studio Objeto', phone: '(11) 98872-0198' },
-  { name: 'Clínica Orto+', phone: '(11) 99128-6330' },
-  { name: 'Rafael Martins', phone: '(11) 98041-7212' },
-];
-
-function CustomerOrderDialog({ open, onOpenChange, onSelect }: { open: boolean; onOpenChange: (open: boolean) => void; onSelect: (customer: string) => void }) {
+function CustomerOrderDialog({ open, onOpenChange, onSelect }: { open: boolean; onOpenChange: (open: boolean) => void; onSelect: (customer: Customer) => void }) {
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
-  const [selected, setSelected] = useState(existingCustomers[0].name);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selected, setSelected] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const customerName = mode === 'existing' ? selected : name.trim();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    void fetch('/api/customers').then(async response => {
+      if (!response.ok) throw new Error('Não foi possível carregar os clientes');
+      const result = await response.json() as Customer[];
+      setCustomers(result);
+      setSelected(current => current || result[0]?.id || '');
+      setError('');
+    }).catch(() => setError('Não foi possível carregar os clientes cadastrados.'));
+  }, [open]);
+  const submit = async () => {
+    setSaving(true);
+    try {
+      if (mode === 'existing') {
+        const customer = customers.find(item => item.id === selected);
+        if (customer) onSelect(customer);
+      } else {
+        const response = await fetch('/api/customers', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, phone, email }) });
+        const customer = await response.json() as Customer & { error?: string };
+        if (!response.ok) throw new Error(customer.error || 'Não foi possível criar o cliente');
+        setCustomers(current => [...current, customer].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
+        onSelect(customer);
+      }
+    } catch (problem) { setError(problem instanceof Error ? problem.message : 'Não foi possível vincular o cliente.'); }
+    finally { setSaving(false); }
+  };
+  const canSubmit = mode === 'existing' ? Boolean(selected) : Boolean(name.trim());
 
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-xl">
     <DialogHeader><DialogTitle className="flex items-center gap-2"><UserPlus className="size-5 text-[#ff6b35]"/> Adicionar pedido ao cliente</DialogTitle><DialogDescription>Escolha um cliente cadastrado ou crie um novo para vincular a esta venda.</DialogDescription></DialogHeader>
     <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1"><button onClick={() => setMode('existing')} className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${mode === 'existing' ? 'bg-white text-[#172033] shadow-sm' : 'text-slate-500'}`}>Cliente existente</button><button onClick={() => setMode('new')} className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${mode === 'new' ? 'bg-white text-[#172033] shadow-sm' : 'text-slate-500'}`}>Criar novo cliente</button></div>
-    {mode === 'existing' ? <div className="space-y-2">{existingCustomers.map(customer => <button key={customer.name} onClick={() => setSelected(customer.name)} className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${selected === customer.name ? 'border-[#ff8358] bg-[#fff5f1] ring-1 ring-[#ff8358]/20' : 'hover:bg-slate-50'}`}><div className="grid size-9 place-items-center rounded-full bg-[#15233b] text-xs font-bold text-white">{initials(customer.name)}</div><div><b className="text-sm">{customer.name}</b><p className="text-xs text-slate-500">{customer.phone}</p></div>{selected === customer.name && <CheckCircle2 className="ml-auto size-5 text-[#ff6b35]"/>}</button>)}</div> : <div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><Field label="Nome do cliente *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Nome completo ou empresa"/></Field></div><Field label="Telefone / WhatsApp"><Input value={phone} onChange={event => setPhone(event.target.value)} placeholder="(00) 00000-0000"/></Field><Field label="E-mail"><Input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="cliente@email.com"/></Field></div>}
-    <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Voltar ao carrinho</Button><Button disabled={!customerName} onClick={() => onSelect(customerName)} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><UserPlus/> Vincular ao pedido</Button></DialogFooter>
+    {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+    {mode === 'existing' ? <div className="max-h-72 space-y-2 overflow-y-auto">{customers.map(customer => <button key={customer.id} onClick={() => setSelected(customer.id)} className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${selected === customer.id ? 'border-[#ff8358] bg-[#fff5f1] ring-1 ring-[#ff8358]/20' : 'hover:bg-slate-50'}`}><div className="grid size-9 place-items-center rounded-full bg-[#15233b] text-xs font-bold text-white">{initials(customer.name)}</div><div><b className="text-sm">{customer.name}</b><p className="text-xs text-slate-500">{customer.phone || customer.email || 'Sem contato cadastrado'}</p></div>{selected === customer.id && <CheckCircle2 className="ml-auto size-5 text-[#ff6b35]"/>}</button>)}{customers.length === 0 && !error && <p className="py-8 text-center text-sm text-slate-400">Nenhum cliente cadastrado.</p>}</div> : <div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><Field label="Nome do cliente *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Nome completo ou empresa"/></Field></div><Field label="Telefone / WhatsApp"><Input value={phone} onChange={event => setPhone(event.target.value)} placeholder="(00) 00000-0000"/></Field><Field label="E-mail"><Input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="cliente@email.com"/></Field></div>}
+    <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Voltar ao carrinho</Button><Button disabled={!canSubmit || saving} onClick={() => void submit()} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><UserPlus/> {saving ? 'Salvando...' : 'Vincular ao pedido'}</Button></DialogFooter>
   </DialogContent></Dialog>;
 }
 
-function PieceDialog({ open, onOpenChange, initial, nextId, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; initial: FinishedPart | null; nextId: string; onSave: (part: FinishedPart) => void }) {
+function PieceDialog({ open, onOpenChange, initial, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; initial: FinishedPart | null; onSave: (part: FinishedPart) => void }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [detail, setDetail] = useState(initial?.detail ?? '');
   const [stock, setStock] = useState(initial?.stock ?? 1);
   const [color, setColor] = useState(initial?.color ?? '');
   const [cost, setCost] = useState(initial?.cost ?? 0);
   const [price, setPrice] = useState(initial?.price ?? 0);
-  const submit = () => onSave({ id: initial?.id ?? nextId, name: name.trim(), detail: detail.trim() || 'Peça adicionada manualmente', stock, color: color.trim() || 'Sem cor', cost, price });
+  const submit = () => onSave({ id: initial?.id ?? '', sku: initial?.sku ?? '', name: name.trim(), detail: detail.trim() || 'Peça adicionada manualmente', stock, color: color.trim() || 'Sem cor', cost, price });
 
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{initial ? 'Editar peça finalizada' : 'Nova peça finalizada'}</DialogTitle><DialogDescription>Cadastre o produto pronto para venda e sua quantidade atual.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="Nome da peça *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Vaso geométrico"/></Field><Field label="Modelo / categoria"><Input value={detail} onChange={event => setDetail(event.target.value)} placeholder="Ex.: Coleção decorativa"/></Field><Field label="Quantidade em estoque"><Input type="number" min="0" value={stock} onChange={event => setStock(Math.max(0, Number(event.target.value)))}/></Field><Field label="Cor"><Input value={color} onChange={event => setColor(event.target.value)} placeholder="Ex.: Laranja"/></Field><Field label="Custo unitário (R$)"><Input type="number" min="0" step=".01" value={cost} onChange={event => setCost(Math.max(0, Number(event.target.value)))}/></Field><Field label="Preço de venda (R$)"><Input type="number" min="0" step=".01" value={price} onChange={event => setPrice(Math.max(0, Number(event.target.value)))}/></Field></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!name.trim() || price <= 0} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{initial ? 'Salvar alterações' : 'Adicionar peça'}</Button></DialogFooter></DialogContent></Dialog>;
 }

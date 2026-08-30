@@ -29,7 +29,7 @@ export const quotes = sqliteTable('quotes', {
 export const orders = sqliteTable('orders', {
   id: text('id').primaryKey(), quoteId: text('quote_id').references(() => quotes.id), customerId: text('customer_id').references(() => customers.id),
   status: text('status', { enum: ['approved', 'queued', 'production', 'finishing', 'ready', 'delivered', 'cancelled'] }).notNull().default('approved'),
-  dueAt: integer('due_at', { mode: 'timestamp' }), totalPrice: real('total_price').notNull(), assignedTo: text('assigned_to').references(() => profiles.id), notes: text('notes'), ...timestamps,
+  dueAt: integer('due_at', { mode: 'timestamp' }), totalPrice: real('total_price').notNull(), totalCost: real('total_cost').notNull().default(0), estimatedProfit: real('estimated_profit').notNull().default(0), assignedTo: text('assigned_to').references(() => profiles.id), notes: text('notes'), ...timestamps,
 }, t => [index('idx_orders_status_due').on(t.status, t.dueAt), index('idx_orders_customer_id').on(t.customerId)]);
 
 export const productionJobs = sqliteTable('production_jobs', {
@@ -39,9 +39,14 @@ export const productionJobs = sqliteTable('production_jobs', {
 }, t => [index('idx_jobs_stage_order').on(t.stage, t.orderId)]);
 
 export const inventoryItems = sqliteTable('inventory_items', {
-  id: text('id').primaryKey(), name: text('name').notNull(), category: text('category', { enum: ['filament', 'resin', 'packaging', 'part', 'other'] }).notNull(),
-  materialType: text('material_type'), color: text('color'), brand: text('brand'), unit: text('unit').notNull().default('g'), quantity: real('quantity').notNull().default(0), minQuantity: real('min_quantity').notNull().default(0), unitCost: real('unit_cost').notNull().default(0), ...timestamps,
-}, t => [index('idx_inventory_category_name').on(t.category, t.name)]);
+  id: text('id').primaryKey(), sku: text('sku'), name: text('name').notNull(), description: text('description'), category: text('category', { enum: ['filament', 'resin', 'packaging', 'part', 'other'] }).notNull(),
+  materialType: text('material_type'), color: text('color'), brand: text('brand'), unit: text('unit').notNull().default('g'), quantity: real('quantity').notNull().default(0), minQuantity: real('min_quantity').notNull().default(0), unitCost: real('unit_cost').notNull().default(0), salePrice: real('sale_price').notNull().default(0), active: integer('active', { mode: 'boolean' }).notNull().default(true), ...timestamps,
+}, t => [index('idx_inventory_category_name').on(t.category, t.name), index('idx_inventory_category_active_name').on(t.category, t.active, t.name), uniqueIndex('idx_inventory_sku').on(t.sku)]);
+
+export const orderItems = sqliteTable('order_items', {
+  id: text('id').primaryKey(), orderId: text('order_id').notNull().references(() => orders.id), inventoryItemId: text('inventory_item_id').references(() => inventoryItems.id),
+  itemName: text('item_name').notNull(), quantity: real('quantity').notNull(), unitCost: real('unit_cost').notNull(), unitPrice: real('unit_price').notNull(), subtotal: real('subtotal').notNull(), ...timestamps,
+}, t => [index('idx_order_items_order_id').on(t.orderId), index('idx_order_items_inventory_id').on(t.inventoryItemId)]);
 
 export const transactions = sqliteTable('transactions', {
   id: text('id').primaryKey(), orderId: text('order_id').references(() => orders.id), type: text('type', { enum: ['income', 'expense'] }).notNull(), category: text('category').notNull(), description: text('description').notNull(), amount: real('amount').notNull(), dueAt: integer('due_at', { mode: 'timestamp' }).notNull(), paidAt: integer('paid_at', { mode: 'timestamp' }), paymentMethod: text('payment_method'), createdBy: text('created_by').notNull(), ...timestamps,

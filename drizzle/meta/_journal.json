@@ -8,6 +8,13 @@
       "when": 1788038108433,
       "tag": "0000_spooky_trauma",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788054507046,
+      "tag": "0001_thick_secret_warriors",
+      "breakpoints": true
     }
   ]
 }
