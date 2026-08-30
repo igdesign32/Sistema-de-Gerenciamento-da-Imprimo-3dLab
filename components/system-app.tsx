@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import {
-  Boxes, Calculator, ChevronRight, CircleDollarSign, Clock3, Factory,
+  Boxes, Calculator, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Factory,
   FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Pencil, Plus, Search,
-  Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, Users, WalletCards, X,
+  Minus, Printer, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -108,6 +108,7 @@ function Module({ view, quotes, onNewQuote, user }: { view: Exclude<View, 'Visã
 }
 
 type FinishedPart = { id: string; name: string; detail: string; stock: number; color: string; cost: number; price: number };
+type CartItem = { partId: string; quantity: number; unitPrice: number };
 
 const finishedPartsSeed: FinishedPart[] = [
   { id: '001', name: 'Abelha articulada', detail: 'Modelo decorativo', stock: 12, color: 'Amarelo Velvet', cost: 5.82, price: 15 },
@@ -121,7 +122,10 @@ function FinishedParts() {
   const [query, setQuery] = useState('');
   const [pieceOpen, setPieceOpen] = useState(false);
   const [editing, setEditing] = useState<FinishedPart | null>(null);
-  const [cartItems, setCartItems] = useState(0);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [customerOpen, setCustomerOpen] = useState(false);
+  const [assignedCustomer, setAssignedCustomer] = useState('');
   const filteredParts = parts.filter(part => `${part.id} ${part.name} ${part.detail} ${part.color}`.toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR')));
   const stockUnits = parts.reduce((total, part) => total + part.stock, 0);
   const stockValue = parts.reduce((total, part) => total + part.stock * part.price, 0);
@@ -129,12 +133,31 @@ function FinishedParts() {
   const openNew = () => { setEditing(null); setPieceOpen(true); };
   const openEdit = (part: FinishedPart) => { setEditing(part); setPieceOpen(true); };
   const savePart = (part: FinishedPart) => { setParts(current => editing ? current.map(item => item.id === part.id ? part : item) : [part, ...current]); setPieceOpen(false); };
-  const sell = (id: string) => { setParts(current => current.map(part => part.id === id && part.stock > 0 ? { ...part, stock: part.stock - 1 } : part)); setCartItems(total => total + 1); };
+  const addToCart = (part: FinishedPart) => {
+    setCart(current => {
+      const existing = current.find(item => item.partId === part.id);
+      if (existing) return current.map(item => item.partId === part.id ? { ...item, quantity: Math.min(part.stock, item.quantity + 1) } : item);
+      return [...current, { partId: part.id, quantity: 1, unitPrice: part.price }];
+    });
+    setCartOpen(true);
+  };
+  const finalizeSale = () => {
+    setParts(current => current.map(part => {
+      const item = cart.find(cartItem => cartItem.partId === part.id);
+      return item ? { ...part, stock: Math.max(0, part.stock - item.quantity) } : part;
+    }));
+    setCart([]);
+    setAssignedCustomer('');
+    setCartOpen(false);
+  };
+  const openCustomerSelection = () => { setCartOpen(false); setCustomerOpen(true); };
+  const assignCustomer = (customer: string) => { setAssignedCustomer(customer); setCustomerOpen(false); setCartOpen(true); };
+  const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
   return <div className="space-y-5">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div><h2 className="text-2xl font-bold">Peças Finalizadas</h2><p className="text-sm text-slate-500">Controle os produtos impressos e prontos para venda.</p></div>
-      <div className="flex gap-2"><Button variant="outline" className="relative"><ShoppingCart/> Carrinho{cartItems > 0 && <Badge className="ml-1 bg-[#15233b] text-white">{cartItems}</Badge>}</Button><Button onClick={openNew} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus/> Nova peça</Button></div>
+      <div className="flex gap-2"><Button onClick={() => setCartOpen(true)} variant="outline" className="relative"><ShoppingCart/> Carrinho{cartCount > 0 && <Badge className="ml-1 bg-[#15233b] text-white">{cartCount}</Badge>}</Button><Button onClick={openNew} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus/> Nova peça</Button></div>
     </div>
 
     <div className="flex items-center rounded-xl bg-[#53647c] p-1 text-sm text-white shadow-sm">
@@ -162,13 +185,62 @@ function FinishedParts() {
             <td className="px-4 py-4 text-xs text-slate-600">{brl(part.cost)}</td>
             <td className="px-4 py-4 text-sm font-bold text-[#e65d2c]">{brl(part.price)}</td>
             <td className="px-4 py-4 text-sm font-bold text-emerald-600">{margin}%</td>
-            <td className="px-4 py-4"><div className="flex items-center gap-1"><Button onClick={() => sell(part.id)} disabled={part.stock === 0} variant="ghost" size="sm" className="text-[#e65d2c]"><ShoppingCart/> Vender</Button><Button onClick={() => openEdit(part)} aria-label={`Editar ${part.name}`} variant="ghost" size="icon"><Pencil/></Button><Button onClick={() => setParts(current => current.filter(item => item.id !== part.id))} aria-label={`Excluir ${part.name}`} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600"><Trash2/></Button></div></td>
+            <td className="px-4 py-4"><div className="flex items-center gap-1"><Button onClick={() => addToCart(part)} disabled={part.stock === 0} variant="ghost" size="sm" className="text-[#e65d2c]"><ShoppingCart/> Vender</Button><Button onClick={() => openEdit(part)} aria-label={`Editar ${part.name}`} variant="ghost" size="icon"><Pencil/></Button><Button onClick={() => setParts(current => current.filter(item => item.id !== part.id))} aria-label={`Excluir ${part.name}`} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600"><Trash2/></Button></div></td>
           </tr>;
         })}{filteredParts.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">Nenhuma peça encontrada.</td></tr>}</tbody>
       </table></div>
     </Card>
     <PieceDialog key={editing?.id ?? 'new'} open={pieceOpen} onOpenChange={setPieceOpen} initial={editing} nextId={String(Math.max(0, ...parts.map(part => Number(part.id) || 0)) + 1).padStart(3, '0')} onSave={savePart}/>
+    <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={finalizeSale} onAddToCustomer={openCustomerSelection} assignedCustomer={assignedCustomer}/>
+    <CustomerOrderDialog open={customerOpen} onOpenChange={open => { setCustomerOpen(open); if (!open) setCartOpen(true); }} onSelect={assignCustomer}/>
   </div>;
+}
+
+function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, assignedCustomer }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; assignedCustomer: string }) {
+  const rows = cart.flatMap(item => { const part = parts.find(candidate => candidate.id === item.partId); return part ? [{ item, part }] : []; });
+  const totalCost = rows.reduce((total, row) => total + row.part.cost * row.item.quantity, 0);
+  const totalSale = rows.reduce((total, row) => total + row.item.unitPrice * row.item.quantity, 0);
+  const estimatedProfit = totalSale - totalCost;
+  const update = (partId: string, values: Partial<CartItem>) => onCartChange(cart.map(item => item.partId === partId ? { ...item, ...values } : item));
+
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[92vh] overflow-y-auto border-slate-700 bg-[#101a2d] text-white sm:max-w-2xl">
+    <DialogHeader><DialogTitle className="flex items-center gap-2 text-xl text-white"><ShoppingCart className="size-5 text-[#ff6b35]"/> Carrinho de Vendas</DialogTitle><DialogDescription className="text-slate-400">Ajuste preços, quantidades e finalize o pedido ou imprima o orçamento.</DialogDescription></DialogHeader>
+    {rows.length === 0 ? <div className="rounded-xl border border-dashed border-slate-600 px-5 py-12 text-center"><ShoppingCart className="mx-auto size-8 text-slate-500"/><p className="mt-3 text-sm font-medium">Seu carrinho está vazio</p><p className="mt-1 text-xs text-slate-400">Clique em “Vender” em uma peça para adicioná-la.</p></div> : <div className="space-y-3">{rows.map(({ item, part }) => <div key={part.id} className="rounded-xl border border-slate-700 bg-[#15233b] p-4">
+      <div className="flex items-start justify-between gap-3"><div><b className="text-sm">{part.id} — {part.name}</b><p className="text-[11px] text-slate-400">Estoque disponível: {part.stock} un.</p></div><Button onClick={() => onCartChange(cart.filter(candidate => candidate.partId !== part.id))} aria-label={`Remover ${part.name} do carrinho`} variant="ghost" size="icon" className="text-slate-400 hover:bg-white/10 hover:text-white"><X/></Button></div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1.35fr]">
+        <div><p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Quantidade</p><div className="flex items-center gap-1"><Button onClick={() => update(part.id, { quantity: Math.max(1, item.quantity - 1) })} variant="outline" size="icon" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Minus/></Button><div className="grid h-9 min-w-16 place-items-center rounded-lg bg-[#3a4a62] text-sm font-bold">{item.quantity}</div><Button onClick={() => update(part.id, { quantity: Math.min(part.stock, item.quantity + 1) })} variant="outline" size="icon" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Plus/></Button></div></div>
+        <Field label="Preço unitário (R$)" dark><Input type="number" min="0" step=".01" value={item.unitPrice} onChange={event => update(part.id, { unitPrice: Math.max(0, Number(event.target.value)) })} className="border-slate-600 bg-[#3a4a62] text-white"/></Field>
+      </div>
+      <div className="mt-4 flex justify-between border-t border-slate-700 pt-3 text-xs text-slate-400"><span>Custo: <b className="text-slate-200">{brl(part.cost * item.quantity)}</b></span><span className="font-semibold text-[#ff8358]">Subtotal: {brl(item.unitPrice * item.quantity)}</span></div>
+    </div>)}</div>}
+    {rows.length > 0 && <><div className="rounded-xl border border-[#ff6b35]/45 bg-[#182033] p-4"><div className="flex justify-between text-sm text-slate-300"><span>↗ Custo total</span><b className="text-white">{brl(totalCost)}</b></div><div className="mt-2 flex justify-between text-sm text-slate-300"><span>$ Lucro estimado</span><b className="text-emerald-400">{brl(estimatedProfit)}</b></div><div className="mt-4 flex items-center justify-between border-t border-slate-700 pt-4"><b>Total da venda</b><b className="text-2xl text-[#ff6b35]">{brl(totalSale)}</b></div></div>
+      {assignedCustomer && <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"><UserPlus className="size-4"/> Pedido vinculado a <b>{assignedCustomer}</b></div>}
+      <div className="grid gap-2 sm:grid-cols-3"><Button onClick={() => window.print()} variant="outline" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Printer/> Imprimir orçamento</Button><Button onClick={onAddToCustomer} variant="outline" className="border-[#ff8358]/50 bg-[#ff6b35]/10 text-[#ff9b77] hover:bg-[#ff6b35]/20 hover:text-white"><UserPlus/> {assignedCustomer ? 'Trocar cliente' : 'Adicionar ao cliente'}</Button><Button onClick={onFinalize} className="bg-[#ff6b35] text-white shadow-lg shadow-[#ff6b35]/20 hover:bg-[#e85c2b]"><CheckCircle2/> Finalizar pedido</Button></div>
+      <p className="text-center text-[10px] text-slate-500">“Finalizar pedido” desconta automaticamente as quantidades do estoque.</p></>}
+  </DialogContent></Dialog>;
+}
+
+const existingCustomers = [
+  { name: 'Lumina Arquitetura', phone: '(11) 99945-2231' },
+  { name: 'Studio Objeto', phone: '(11) 98872-0198' },
+  { name: 'Clínica Orto+', phone: '(11) 99128-6330' },
+  { name: 'Rafael Martins', phone: '(11) 98041-7212' },
+];
+
+function CustomerOrderDialog({ open, onOpenChange, onSelect }: { open: boolean; onOpenChange: (open: boolean) => void; onSelect: (customer: string) => void }) {
+  const [mode, setMode] = useState<'existing' | 'new'>('existing');
+  const [selected, setSelected] = useState(existingCustomers[0].name);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const customerName = mode === 'existing' ? selected : name.trim();
+
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-xl">
+    <DialogHeader><DialogTitle className="flex items-center gap-2"><UserPlus className="size-5 text-[#ff6b35]"/> Adicionar pedido ao cliente</DialogTitle><DialogDescription>Escolha um cliente cadastrado ou crie um novo para vincular a esta venda.</DialogDescription></DialogHeader>
+    <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1"><button onClick={() => setMode('existing')} className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${mode === 'existing' ? 'bg-white text-[#172033] shadow-sm' : 'text-slate-500'}`}>Cliente existente</button><button onClick={() => setMode('new')} className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${mode === 'new' ? 'bg-white text-[#172033] shadow-sm' : 'text-slate-500'}`}>Criar novo cliente</button></div>
+    {mode === 'existing' ? <div className="space-y-2">{existingCustomers.map(customer => <button key={customer.name} onClick={() => setSelected(customer.name)} className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${selected === customer.name ? 'border-[#ff8358] bg-[#fff5f1] ring-1 ring-[#ff8358]/20' : 'hover:bg-slate-50'}`}><div className="grid size-9 place-items-center rounded-full bg-[#15233b] text-xs font-bold text-white">{initials(customer.name)}</div><div><b className="text-sm">{customer.name}</b><p className="text-xs text-slate-500">{customer.phone}</p></div>{selected === customer.name && <CheckCircle2 className="ml-auto size-5 text-[#ff6b35]"/>}</button>)}</div> : <div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><Field label="Nome do cliente *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Nome completo ou empresa"/></Field></div><Field label="Telefone / WhatsApp"><Input value={phone} onChange={event => setPhone(event.target.value)} placeholder="(00) 00000-0000"/></Field><Field label="E-mail"><Input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="cliente@email.com"/></Field></div>}
+    <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Voltar ao carrinho</Button><Button disabled={!customerName} onClick={() => onSelect(customerName)} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><UserPlus/> Vincular ao pedido</Button></DialogFooter>
+  </DialogContent></Dialog>;
 }
 
 function PieceDialog({ open, onOpenChange, initial, nextId, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; initial: FinishedPart | null; nextId: string; onSave: (part: FinishedPart) => void }) {
