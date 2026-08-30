@@ -3,8 +3,8 @@
 import { useMemo, useState } from 'react';
 import {
   Boxes, Calculator, ChevronRight, CircleDollarSign, Clock3, Factory,
-  FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Plus, Search,
-  Settings, ShoppingBag, TrendingUp, UserCog, Users, WalletCards, X,
+  FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Pencil, Plus, Search,
+  Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, Users, WalletCards, X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -101,9 +101,90 @@ const moduleData: Record<Exclude<View, 'Visão geral' | 'Orçamentos' | 'Produç
 function Module({ view, quotes, onNewQuote, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; user: { name: string; email: string } }) {
   if (view === 'Orçamentos') return <ModuleShell title={`${quotes.length} orçamentos recentes`} detail="Crie, envie e converta propostas em pedidos" action="Novo orçamento" onAction={onNewQuote}><DataTable headers={['Orçamento', 'Cliente', 'Item', 'Criado em', 'Valor', 'Status']} rows={quotes.map(q => [q.id, q.client, q.item, q.date, q.total, q.status])}/></ModuleShell>;
   if (view === 'Produção') return <Production />;
+  if (view === 'Estoque') return <FinishedParts />;
   if (view === 'Configurações') return <SettingsView user={user} />;
   const data = moduleData[view];
   return <ModuleShell title={data.title} detail={data.detail} action={data.action}><DataTable headers={data.headers} rows={data.rows}/>{view === 'Financeiro' && <div className="grid gap-4 border-t bg-slate-50 p-4 sm:grid-cols-3"><Summary label="Receitas" value="R$ 18.740,00" color="text-emerald-600"/><Summary label="Despesas" value="R$ 11.820,00" color="text-red-600"/><Summary label="Resultado" value="R$ 6.920,00" color="text-blue-600"/></div>}</ModuleShell>;
+}
+
+type FinishedPart = { id: string; name: string; detail: string; stock: number; color: string; cost: number; price: number };
+
+const finishedPartsSeed: FinishedPart[] = [
+  { id: '001', name: 'Abelha articulada', detail: 'Modelo decorativo', stock: 12, color: 'Amarelo Velvet', cost: 5.82, price: 15 },
+  { id: '002', name: 'Suporte para celular', detail: 'Linha escritório', stock: 8, color: 'Preto', cost: 7.4, price: 22 },
+  { id: '003', name: 'Vaso geométrico', detail: 'Coleção decorativa', stock: 4, color: 'Branco', cost: 12.6, price: 35 },
+  { id: '004', name: 'Chaveiro personalizado', detail: 'Linha personalizada', stock: 25, color: 'Laranja', cost: 2.15, price: 8 },
+];
+
+function FinishedParts() {
+  const [parts, setParts] = useState(finishedPartsSeed);
+  const [query, setQuery] = useState('');
+  const [pieceOpen, setPieceOpen] = useState(false);
+  const [editing, setEditing] = useState<FinishedPart | null>(null);
+  const [cartItems, setCartItems] = useState(0);
+  const filteredParts = parts.filter(part => `${part.id} ${part.name} ${part.detail} ${part.color}`.toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR')));
+  const stockUnits = parts.reduce((total, part) => total + part.stock, 0);
+  const stockValue = parts.reduce((total, part) => total + part.stock * part.price, 0);
+  const stockCost = parts.reduce((total, part) => total + part.stock * part.cost, 0);
+  const openNew = () => { setEditing(null); setPieceOpen(true); };
+  const openEdit = (part: FinishedPart) => { setEditing(part); setPieceOpen(true); };
+  const savePart = (part: FinishedPart) => { setParts(current => editing ? current.map(item => item.id === part.id ? part : item) : [part, ...current]); setPieceOpen(false); };
+  const sell = (id: string) => { setParts(current => current.map(part => part.id === id && part.stock > 0 ? { ...part, stock: part.stock - 1 } : part)); setCartItems(total => total + 1); };
+
+  return <div className="space-y-5">
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+      <div><h2 className="text-2xl font-bold">Peças Finalizadas</h2><p className="text-sm text-slate-500">Controle os produtos impressos e prontos para venda.</p></div>
+      <div className="flex gap-2"><Button variant="outline" className="relative"><ShoppingCart/> Carrinho{cartItems > 0 && <Badge className="ml-1 bg-[#15233b] text-white">{cartItems}</Badge>}</Button><Button onClick={openNew} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus/> Nova peça</Button></div>
+    </div>
+
+    <div className="flex items-center rounded-xl bg-[#53647c] p-1 text-sm text-white shadow-sm">
+      <div className="flex items-center gap-2 rounded-lg bg-[#15233b] px-4 py-2.5 font-semibold"><PackageOpen className="size-4 text-[#ff8358]"/> Peças Finalizadas</div>
+    </div>
+
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <StockMetric icon={Boxes} label="Modelos" value={String(parts.length)} tone="orange" />
+      <StockMetric icon={PackageOpen} label="Unidades em estoque" value={String(stockUnits)} tone="blue" />
+      <StockMetric icon={CircleDollarSign} label="Valor em estoque" value={brl(stockValue)} tone="green" />
+      <StockMetric icon={TrendingUp} label="Custo total" value={brl(stockCost)} tone="violet" />
+    </div>
+
+    <div className="flex items-center gap-2 rounded-xl border border-[#dfe5ee] bg-white px-4 shadow-sm"><Search className="size-4 text-slate-400"/><input value={query} onChange={event => setQuery(event.target.value)} className="h-12 w-full bg-transparent text-sm outline-none" placeholder="Buscar por nome ou modelo..." /></div>
+
+    <Card className="overflow-hidden border-0 bg-white py-0 shadow-sm ring-1 ring-[#e6eaf0]">
+      <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left">
+        <thead><tr className="border-b bg-[#f8fafc] text-[10px] uppercase tracking-[.08em] text-slate-400">{['Peça / Modelo','Estoque','Cores','Custo','Preço de venda','Margem','Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead>
+        <tbody>{filteredParts.map(part => {
+          const margin = Math.round((1 - part.cost / part.price) * 100);
+          return <tr key={part.id} className="border-b last:border-0 hover:bg-slate-50/70">
+            <td className="px-4 py-4"><b className="text-sm">{part.id} — {part.name}</b><p className="mt-0.5 text-[11px] italic text-slate-400">{part.detail}</p></td>
+            <td className="px-4 py-4"><Badge variant="secondary" className="bg-slate-100 text-slate-700">{part.stock} un.</Badge></td>
+            <td className="px-4 py-4"><Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700">● {part.color}</Badge></td>
+            <td className="px-4 py-4 text-xs text-slate-600">{brl(part.cost)}</td>
+            <td className="px-4 py-4 text-sm font-bold text-[#e65d2c]">{brl(part.price)}</td>
+            <td className="px-4 py-4 text-sm font-bold text-emerald-600">{margin}%</td>
+            <td className="px-4 py-4"><div className="flex items-center gap-1"><Button onClick={() => sell(part.id)} disabled={part.stock === 0} variant="ghost" size="sm" className="text-[#e65d2c]"><ShoppingCart/> Vender</Button><Button onClick={() => openEdit(part)} aria-label={`Editar ${part.name}`} variant="ghost" size="icon"><Pencil/></Button><Button onClick={() => setParts(current => current.filter(item => item.id !== part.id))} aria-label={`Excluir ${part.name}`} variant="ghost" size="icon" className="text-slate-400 hover:text-red-600"><Trash2/></Button></div></td>
+          </tr>;
+        })}{filteredParts.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-400">Nenhuma peça encontrada.</td></tr>}</tbody>
+      </table></div>
+    </Card>
+    <PieceDialog key={editing?.id ?? 'new'} open={pieceOpen} onOpenChange={setPieceOpen} initial={editing} nextId={String(Math.max(0, ...parts.map(part => Number(part.id) || 0)) + 1).padStart(3, '0')} onSave={savePart}/>
+  </div>;
+}
+
+function PieceDialog({ open, onOpenChange, initial, nextId, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; initial: FinishedPart | null; nextId: string; onSave: (part: FinishedPart) => void }) {
+  const [name, setName] = useState(initial?.name ?? '');
+  const [detail, setDetail] = useState(initial?.detail ?? '');
+  const [stock, setStock] = useState(initial?.stock ?? 1);
+  const [color, setColor] = useState(initial?.color ?? '');
+  const [cost, setCost] = useState(initial?.cost ?? 0);
+  const [price, setPrice] = useState(initial?.price ?? 0);
+  const submit = () => onSave({ id: initial?.id ?? nextId, name: name.trim(), detail: detail.trim() || 'Peça adicionada manualmente', stock, color: color.trim() || 'Sem cor', cost, price });
+
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{initial ? 'Editar peça finalizada' : 'Nova peça finalizada'}</DialogTitle><DialogDescription>Cadastre o produto pronto para venda e sua quantidade atual.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="Nome da peça *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Vaso geométrico"/></Field><Field label="Modelo / categoria"><Input value={detail} onChange={event => setDetail(event.target.value)} placeholder="Ex.: Coleção decorativa"/></Field><Field label="Quantidade em estoque"><Input type="number" min="0" value={stock} onChange={event => setStock(Math.max(0, Number(event.target.value)))}/></Field><Field label="Cor"><Input value={color} onChange={event => setColor(event.target.value)} placeholder="Ex.: Laranja"/></Field><Field label="Custo unitário (R$)"><Input type="number" min="0" step=".01" value={cost} onChange={event => setCost(Math.max(0, Number(event.target.value)))}/></Field><Field label="Preço de venda (R$)"><Input type="number" min="0" step=".01" value={price} onChange={event => setPrice(Math.max(0, Number(event.target.value)))}/></Field></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!name.trim() || price <= 0} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{initial ? 'Salvar alterações' : 'Adicionar peça'}</Button></DialogFooter></DialogContent></Dialog>;
+}
+
+function StockMetric({ icon: Icon, label, value, tone }: { icon: React.ElementType; label: string; value: string; tone: string }) {
+  return <Card className="gap-2 border-0 bg-white py-4 shadow-sm ring-1 ring-[#e6eaf0]"><CardContent className="flex items-center gap-3 px-4"><div className={`metric-icon metric-${tone}`}><Icon className="size-4"/></div><div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p><p className="text-lg font-bold">{value}</p></div></CardContent></Card>;
 }
 
 function ModuleShell({ title, detail, action, onAction, children }: { title: string; detail: string; action: string; onAction?: () => void; children: React.ReactNode }) {
