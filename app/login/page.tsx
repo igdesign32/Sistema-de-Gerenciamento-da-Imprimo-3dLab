@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  Boxes,
   CheckCircle2,
   LockKeyhole,
   ShieldCheck,
@@ -26,12 +25,10 @@ export default async function LoginPage() {
       <div className="relative mx-auto grid w-full max-w-6xl overflow-hidden rounded-[2rem] border border-white/20 bg-black/10 shadow-2xl shadow-black/20 lg:grid-cols-[1.05fr_.95fr]">
         <section className="flex min-h-[360px] flex-col justify-between p-7 sm:p-10 lg:min-h-[660px] lg:p-14">
           <div className="flex items-center gap-3">
-            <div className="grid size-11 place-items-center rounded-xl bg-[#ff6b35] shadow-[0_10px_28px_rgba(255,107,53,.3)]">
-              <Boxes className="size-6" />
-            </div>
+            <img src="/imprimo3dlab-logo-white.png" alt="" className="h-14 w-16 shrink-0 object-contain" />
             <div>
-              <p className="text-xl font-bold">Forma<span className="text-[#ff8c61]">3D</span></p>
-              <p className="text-[10px] uppercase tracking-[.18em] text-white">Gestão de impressão</p>
+              <p className="text-xl font-bold">Imprimo3DLab</p>
+              <p className="text-[10px] uppercase tracking-[.18em] text-white">Gerenciamento</p>
             </div>
           </div>
 
@@ -60,7 +57,7 @@ export default async function LoginPage() {
             </div>
             <h2 className="mt-6 text-2xl font-bold tracking-tight">Acesso dos administradores</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Entre com uma conta autorizada dos donos da Forma3D. Todos os usuários deste sistema possuem acesso administrativo completo.
+              Entre com uma conta autorizada dos donos da Imprimo3DLab. Todos os usuários deste sistema possuem acesso administrativo completo.
             </p>
 
             {user && (

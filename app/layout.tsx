@@ -13,18 +13,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Forma3D — Gestão de impressão 3D',
+  title: 'Imprimo3DLab — Gerenciamento',
   description: 'Orçamentos, pedidos, produção, estoque e financeiro em um só lugar.',
   metadataBase: new URL(process.env.SITE_URL ?? 'http://localhost:3000'),
   openGraph: {
-    title: 'Forma3D — Gestão de impressão 3D',
-    description: 'Gestão inteligente para impressão 3D: do orçamento à entrega.',
-    images: [{ url: '/og.png', width: 1672, height: 941, alt: 'Forma3D — Gestão inteligente para impressão 3D' }],
+    title: 'Imprimo3DLab — Gerenciamento',
+    description: 'Gerenciamento inteligente para impressão 3D: do orçamento à entrega.',
+    images: [{ url: '/og.png', width: 1672, height: 941, alt: 'Imprimo3DLab — Gerenciamento inteligente para impressão 3D' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Forma3D — Gestão de impressão 3D',
-    description: 'Gestão inteligente para impressão 3D: do orçamento à entrega.',
+    title: 'Imprimo3DLab — Gerenciamento',
+    description: 'Gerenciamento inteligente para impressão 3D: do orçamento à entrega.',
     images: ['/og.png'],
   },
 };
