@@ -24,6 +24,7 @@ const nav: [React.ElementType, View][] = [
   [CircleDollarSign, 'Financeiro'], [Settings, 'Configurações'],
 ];
 const brl = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
+const parseBrl = (value: string) => Number(value.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
 const seedQuotes: Quote[] = [
   { id: 'ORC-1052', client: 'Ateliê Norte', item: 'Luminária Voronoi', date: '29 ago', total: 'R$ 428,00', status: 'Rascunho' },
   { id: 'ORC-1051', client: 'Lumina Arquitetura', item: 'Maquete residencial', date: '28 ago', total: 'R$ 1.480,00', status: 'Aprovado' },
@@ -34,6 +35,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
   const [view, setView] = useState<View>('Visão geral');
   const [menu, setMenu] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
+  const [quoteEditor, setQuoteEditor] = useState<Quote | null>(null);
   const [quotes, setQuotes] = useState(seedQuotes);
   const [notice, setNotice] = useState('');
 
@@ -42,9 +44,16 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
     setQuotes(current => [quote, ...current]);
     setQuoteOpen(false);
     setView('Orçamentos');
+    setQuoteEditor(quote);
     setNotice(`${quote.id} salvo com sucesso.`);
     window.setTimeout(() => setNotice(''), 3500);
     try { await fetch('/api/quotes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); } catch { /* UI remains useful offline */ }
+  };
+  const deleteQuote = async (quote: Quote) => {
+    setQuotes(current => current.filter(item => item.id !== quote.id));
+    setNotice(`${quote.id} apagado.`);
+    window.setTimeout(() => setNotice(''), 3500);
+    try { await fetch(`/api/quotes?id=${encodeURIComponent(quote.id)}`, { method: 'DELETE' }); } catch { /* local list remains updated */ }
   };
 
   return <div className="min-h-screen bg-[#f4f7fb] text-[#172033]">
@@ -57,10 +66,11 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
         <Button onClick={() => setQuoteOpen(true)} size="icon" aria-label="Novo orçamento" className="ml-auto bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus /></Button>
       </header>
       <div className="mx-auto max-w-[1500px] p-4 sm:p-7">
-        {view === 'Visão geral' ? <Dashboard onNavigate={selectView} onNewQuote={() => setQuoteOpen(true)} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => setQuoteOpen(true)} user={user} />}
+        {view === 'Visão geral' ? <Dashboard onNavigate={selectView} onNewQuote={() => setQuoteOpen(true)} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => setQuoteOpen(true)} onEditQuote={setQuoteEditor} onDeleteQuote={deleteQuote} user={user} />}
       </div>
     </main>
     <QuoteDialog open={quoteOpen} onOpenChange={setQuoteOpen} onSave={saveQuote} sequence={1053 + quotes.length - seedQuotes.length} />
+    {quoteEditor && <QuoteEditor quote={quoteEditor} onClose={() => setQuoteEditor(null)}/>}
     {notice && <output className="fixed bottom-5 right-5 z-[70] rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-xl">{notice}</output>}
   </div>;
 }
@@ -98,8 +108,8 @@ const moduleData: Record<Exclude<View, 'Visão geral' | 'Orçamentos' | 'Produç
   Financeiro: { title: 'Financeiro de agosto', detail: 'Receitas, custos e resultado operacional', headers: ['Lançamento', 'Categoria', 'Vencimento', 'Forma', 'Valor', 'Situação'], rows: [['Pedido #1048', 'Receita de venda', '29 ago', 'PIX', 'R$ 1.480,00', 'A receber'], ['Fornecedor 3D Fila', 'Material', '30 ago', 'Boleto', '- R$ 820,00', 'Agendado'], ['Pedido #1046', 'Receita de venda', '28 ago', 'Cartão', 'R$ 295,00', 'Recebido'], ['Energia elétrica', 'Custo fixo', '05 set', 'Débito', '- R$ 486,00', 'Agendado']], action: 'Novo lançamento' },
 };
 
-function Module({ view, quotes, onNewQuote, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; user: { name: string; email: string } }) {
-  if (view === 'Orçamentos') return <ModuleShell title={`${quotes.length} orçamentos recentes`} detail="Crie, envie e converta propostas em pedidos" action="Novo orçamento" onAction={onNewQuote}><DataTable headers={['Orçamento', 'Cliente', 'Item', 'Criado em', 'Valor', 'Status']} rows={quotes.map(q => [q.id, q.client, q.item, q.date, q.total, q.status])}/></ModuleShell>;
+function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; onEditQuote: (quote: Quote) => void; onDeleteQuote: (quote: Quote) => void; user: { name: string; email: string } }) {
+  if (view === 'Orçamentos') return <QuotesView quotes={quotes} onNewQuote={onNewQuote} onEdit={onEditQuote} onDelete={onDeleteQuote}/>;
   if (view === 'Pedidos') return <OrdersView />;
   if (view === 'Produção') return <Production />;
   if (view === 'Estoque') return <FinishedParts />;
@@ -351,10 +361,12 @@ function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFina
   </DialogContent></Dialog>;
 }
 
-function QuoteEditor({ parts, cart, customer, onClose }: { parts: FinishedPart[]; cart: CartItem[]; customer: Customer | null; onClose: () => void }) {
-  const rows = cart.flatMap(item => { const part = parts.find(candidate => candidate.id === item.partId); return part ? [{ item, part }] : []; });
-  const total = rows.reduce((sum, row) => sum + row.item.quantity * row.item.unitPrice, 0);
-  const createdAt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date());
+function QuoteEditor({ parts = [], cart = [], customer = null, quote, onClose }: { parts?: FinishedPart[]; cart?: CartItem[]; customer?: Customer | null; quote?: Quote; onClose: () => void }) {
+  const cartRows = cart.flatMap(item => { const part = parts.find(candidate => candidate.id === item.partId); return part ? [{ key: part.id, name: `${part.sku} — ${part.name}`, quantity: item.quantity, unitPrice: item.unitPrice, lineTotal: item.quantity * item.unitPrice }] : []; });
+  const quoteTotal = quote ? parseBrl(quote.total) : 0;
+  const rows = quote ? [{ key: quote.id, name: quote.item, quantity: 1, unitPrice: quoteTotal, lineTotal: quoteTotal }] : cartRows;
+  const total = rows.reduce((sum, row) => sum + row.lineTotal, 0);
+  const createdAt = quote?.date || new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date());
   const printQuote = () => {
     document.body.classList.add('quote-printing');
     const finish = () => document.body.classList.remove('quote-printing');
@@ -376,7 +388,7 @@ function QuoteEditor({ parts, cart, customer, onClose }: { parts: FinishedPart[]
         <div className="min-w-[270px] text-sm">
           <EditableText className="block text-2xl font-bold text-slate-950">Orçamento de Venda</EditableText>
           <EditableText className="mt-1 block text-xs text-slate-500">{createdAt}</EditableText>
-          <div className="mt-3 flex gap-1"><span className="font-semibold">Cliente:</span><EditableText className="min-w-40 border-b border-slate-400 px-1">{customer?.name || 'Nome do cliente'}</EditableText></div>
+          <div className="mt-3 flex gap-1"><span className="font-semibold">Cliente:</span><EditableText className="min-w-40 border-b border-slate-400 px-1">{quote?.client || customer?.name || 'Nome do cliente'}</EditableText></div>
           <div className="mt-1 flex gap-1"><span className="font-semibold">Contato:</span><EditableText className="min-w-40 border-b border-slate-400 px-1">{customer?.phone || customer?.email || 'Telefone ou e-mail'}</EditableText></div>
         </div>
       </header>
@@ -384,7 +396,7 @@ function QuoteEditor({ parts, cart, customer, onClose }: { parts: FinishedPart[]
       <div className="mt-10 overflow-x-auto">
         <table className="w-full border-collapse text-sm">
           <thead><tr className="border-y bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="px-3 py-3">Produto</th><th className="px-3 py-3 text-center">Qtd.</th><th className="px-3 py-3 text-right">Preço unit.</th><th className="px-3 py-3 text-right">Total</th></tr></thead>
-          <tbody>{rows.map(({ item, part }) => <tr key={part.id} className="border-b border-slate-200"><td className="px-3 py-4"><EditableText className="font-medium">{part.sku} — {part.name}</EditableText></td><td className="px-3 py-4 text-center"><EditableText>{item.quantity}</EditableText></td><td className="px-3 py-4 text-right"><EditableText>{brl(item.unitPrice)}</EditableText></td><td className="px-3 py-4 text-right font-bold"><EditableText>{brl(item.quantity * item.unitPrice)}</EditableText></td></tr>)}</tbody>
+          <tbody>{rows.map(row => <tr key={row.key} className="border-b border-slate-200"><td className="px-3 py-4"><EditableText className="font-medium">{row.name}</EditableText></td><td className="px-3 py-4 text-center"><EditableText>{row.quantity}</EditableText></td><td className="px-3 py-4 text-right"><EditableText>{brl(row.unitPrice)}</EditableText></td><td className="px-3 py-4 text-right font-bold"><EditableText>{brl(row.lineTotal)}</EditableText></td></tr>)}</tbody>
         </table>
       </div>
 
@@ -463,6 +475,12 @@ function PieceDialog({ open, onOpenChange, initial, onSave }: { open: boolean; o
 
 function StockMetric({ icon: Icon, label, value, tone }: { icon: React.ElementType; label: string; value: string; tone: string }) {
   return <Card className="gap-2 border-0 bg-white py-4 shadow-sm ring-1 ring-[#e6eaf0]"><CardContent className="flex items-center gap-3 px-4"><div className={`metric-icon metric-${tone}`}><Icon className="size-4"/></div><div><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p><p className="text-lg font-bold">{value}</p></div></CardContent></Card>;
+}
+
+function QuotesView({ quotes, onNewQuote, onEdit, onDelete }: { quotes: Quote[]; onNewQuote: () => void; onEdit: (quote: Quote) => void; onDelete: (quote: Quote) => void }) {
+  return <ModuleShell title={`${quotes.length} orçamentos recentes`} detail="Crie, edite e converta propostas em pedidos" action="Novo orçamento" onAction={onNewQuote}>
+    <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Orçamento','Cliente','Item','Criado em','Valor','Status','Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{quotes.map(quote => <tr key={quote.id} className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{quote.id}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.client}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.item}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.date}</td><td className="px-4 py-3 text-xs text-slate-600">{quote.total}</td><td className="px-4 py-3"><Badge variant="secondary" className="bg-blue-50 text-blue-700">{quote.status}</Badge></td><td className="px-4 py-2"><div className="flex gap-1"><Button onClick={() => onEdit(quote)} variant="ghost" size="icon" aria-label={`Editar ${quote.id}`} className="text-[#0068ff] hover:bg-blue-50"><Pencil/></Button><Button onClick={() => onDelete(quote)} variant="ghost" size="icon" aria-label={`Apagar ${quote.id}`} className="text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2/></Button></div></td></tr>)}</tbody></table></div>
+  </ModuleShell>;
 }
 
 function ModuleShell({ title, detail, action, onAction, children }: { title: string; detail: string; action: string; onAction?: () => void; children: React.ReactNode }) {
