@@ -220,12 +220,12 @@ function FinishedParts() {
   return <div className="space-y-5">
     {dataNotice && <output className={`block rounded-xl px-4 py-3 text-sm ${dataNotice.includes('não') || dataNotice.includes('Não') ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>{dataNotice}</output>}
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div><h2 className="text-2xl font-bold">Peças Finalizadas</h2><p className="text-sm text-slate-500">Controle os produtos impressos e prontos para venda.</p></div>
+      <div><h2 className="text-2xl font-bold">Produtos Salvos</h2><p className="text-sm text-slate-500">Controle os produtos impressos e prontos para venda.</p></div>
       <div className="flex gap-2"><Button onClick={() => setCartOpen(true)} variant="outline" className="relative"><ShoppingCart/> Carrinho{cartCount > 0 && <Badge className="ml-1 bg-[#15233b] text-white">{cartCount}</Badge>}</Button><Button onClick={openNew} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus/> Nova peça</Button></div>
     </div>
 
     <div className="flex items-center rounded-xl bg-[#53647c] p-1 text-sm text-white shadow-sm">
-      <button className="flex items-center gap-2 rounded-lg bg-[#15233b] px-4 py-2.5 font-semibold"><PackageOpen className="size-4 text-[#ff8358]"/> Peças Finalizadas</button>
+      <button className="flex items-center gap-2 rounded-lg bg-[#15233b] px-4 py-2.5 font-semibold"><PackageOpen className="size-4 text-[#ff8358]"/> Produtos Salvos</button>
       <button onClick={() => setInventorySection('supplies')} className="flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-slate-100 transition hover:bg-white/10"><Boxes className="size-4"/> Insumos</button>
     </div>
 
@@ -302,7 +302,7 @@ function SuppliesView({ onSelectParts }: { onSelectParts: () => void }) {
       <Button onClick={openNew} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus/> Novo insumo</Button>
     </div>
     <div className="flex items-center rounded-xl bg-[#53647c] p-1 text-sm text-white shadow-sm">
-      <button onClick={onSelectParts} className="flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-slate-100 transition hover:bg-white/10"><PackageOpen className="size-4"/> Peças Finalizadas</button>
+      <button onClick={onSelectParts} className="flex items-center gap-2 rounded-lg px-4 py-2.5 font-medium text-slate-100 transition hover:bg-white/10"><PackageOpen className="size-4"/> Produtos Salvos</button>
       <button className="flex items-center gap-2 rounded-lg bg-[#15233b] px-4 py-2.5 font-semibold"><Boxes className="size-4 text-[#ff8358]"/> Insumos</button>
     </div>
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{supplies.map(supply => <Card key={supply.id} className="gap-4 border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]">
