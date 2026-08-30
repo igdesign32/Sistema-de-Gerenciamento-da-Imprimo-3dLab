@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Boxes, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Factory,
+  Boxes, Calculator, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Factory,
   FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Pencil, Plus, Search,
   MessageCircle, Minus, Printer, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
@@ -14,12 +14,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
+import { CalculatorView, type CalculatorQuote } from '@/components/calculator-view';
 
-type View = 'Visão geral' | 'Orçamentos' | 'Pedidos' | 'Produção' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
+type View = 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Pedidos' | 'Produção' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
 type Quote = { id: string; client: string; item: string; date: string; total: string; status: string; quantity?: number; unitPrice?: number };
 
 const nav: [React.ElementType, View][] = [
-  [LayoutDashboard, 'Visão geral'], [FileText, 'Orçamentos'], [ShoppingBag, 'Pedidos'],
+  [LayoutDashboard, 'Visão geral'], [Calculator, 'Calculadora'], [FileText, 'Orçamentos'], [ShoppingBag, 'Pedidos'],
   [Factory, 'Produção'], [Boxes, 'Estoque'], [Users, 'Clientes'],
   [CircleDollarSign, 'Financeiro'], [Settings, 'Configurações'],
 ];
@@ -55,6 +56,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
     window.setTimeout(() => setNotice(''), 3500);
     try { await fetch(`/api/quotes?id=${encodeURIComponent(quote.id)}`, { method: 'DELETE' }); } catch { /* local list remains updated */ }
   };
+  const saveCalculatorQuote = (quote: CalculatorQuote) => { setQuotes(current => [quote, ...current]); setNotice(`${quote.id} salvo em Orçamentos.`); window.setTimeout(() => setNotice(''), 3500); };
 
   return <div className="min-h-screen bg-[#f4f7fb] text-[#172033]">
     <Sidebar view={view} menu={menu} onClose={() => setMenu(false)} onSelect={selectView} user={user} signOutPath={signOutPath} />
@@ -66,7 +68,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
         <Button onClick={() => setQuoteOpen(true)} size="icon" aria-label="Novo orçamento" className="ml-auto bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus /></Button>
       </header>
       <div className="mx-auto max-w-[1500px] p-4 sm:p-7">
-        {view === 'Visão geral' ? <Dashboard onNavigate={selectView} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => setQuoteOpen(true)} onEditQuote={setQuoteEditor} onDeleteQuote={deleteQuote} user={user} />}
+        {view === 'Visão geral' ? <Dashboard onNavigate={selectView} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => setQuoteOpen(true)} onEditQuote={setQuoteEditor} onDeleteQuote={deleteQuote} onCalculatorQuoteSaved={saveCalculatorQuote} user={user} />}
       </div>
     </main>
     <QuoteDialog open={quoteOpen} onOpenChange={setQuoteOpen} onSave={saveQuote} sequence={1053 + quotes.length - seedQuotes.length} />
@@ -100,14 +102,15 @@ function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; us
   </>;
 }
 
-const moduleData: Record<Exclude<View, 'Visão geral' | 'Orçamentos' | 'Produção' | 'Configurações'>, { title: string; detail: string; headers: string[]; rows: string[][]; action: string }> = {
+const moduleData: Record<Exclude<View, 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Produção' | 'Configurações'>, { title: string; detail: string; headers: string[]; rows: string[][]; action: string }> = {
   Pedidos: { title: '12 pedidos ativos', detail: 'Do orçamento aprovado até a entrega', headers: ['Pedido', 'Cliente', 'Trabalho', 'Responsável', 'Prazo', 'Status'], rows: [['#1048', 'Lumina Arquitetura', 'Maquete residencial', 'Carlos', 'Hoje, 16:00', 'Em produção'], ['#1047', 'Studio Objeto', 'Kit 12 expositores', 'Marina', 'Amanhã', 'Aguardando'], ['#1046', 'Rafael Martins', 'Engrenagem técnica', 'Carlos', '30 ago', 'Acabamento'], ['#1045', 'Clínica Orto+', 'Modelo anatômico', 'Marina', '02 set', 'Aprovado']], action: 'Novo pedido' },
   Estoque: { title: 'Estoque de materiais', detail: 'Filamentos, resinas, peças e embalagens', headers: ['Material', 'Tipo / cor', 'Marca', 'Disponível', 'Custo médio', 'Situação'], rows: [['PLA Branco Neve', 'PLA · Branco', '3D Fila', '420 g', 'R$ 92/kg', 'Estoque baixo'], ['PETG Preto', 'PETG · Preto', 'Voolt3D', '1,8 kg', 'R$ 108/kg', 'Normal'], ['Resina Cinza', 'Standard · Cinza', 'Anycubic', '310 ml', 'R$ 146/L', 'Estoque baixo'], ['PLA Laranja', 'PLA · Laranja', '3D Fila', '2,4 kg', 'R$ 96/kg', 'Normal']], action: 'Entrada de material' },
   Clientes: { title: '86 clientes cadastrados', detail: 'Relacionamento e histórico comercial', headers: ['Cliente', 'Contato', 'Pedidos', 'Último pedido', 'Faturamento', 'Situação'], rows: [['Lumina Arquitetura', '(11) 99945-2231', '14', '28 ago', 'R$ 8.420,00', 'Ativo'], ['Studio Objeto', '(11) 98872-0198', '8', '27 ago', 'R$ 4.180,00', 'Ativo'], ['Clínica Orto+', '(11) 99128-6330', '5', '25 ago', 'R$ 3.750,00', 'Ativo'], ['Rafael Martins', '(11) 98041-7212', '3', '24 ago', 'R$ 860,00', 'Pessoa física']], action: 'Novo cliente' },
   Financeiro: { title: 'Financeiro de agosto', detail: 'Receitas, custos e resultado operacional', headers: ['Lançamento', 'Categoria', 'Vencimento', 'Forma', 'Valor', 'Situação'], rows: [['Pedido #1048', 'Receita de venda', '29 ago', 'PIX', 'R$ 1.480,00', 'A receber'], ['Fornecedor 3D Fila', 'Material', '30 ago', 'Boleto', '- R$ 820,00', 'Agendado'], ['Pedido #1046', 'Receita de venda', '28 ago', 'Cartão', 'R$ 295,00', 'Recebido'], ['Energia elétrica', 'Custo fixo', '05 set', 'Débito', '- R$ 486,00', 'Agendado']], action: 'Novo lançamento' },
 };
 
-function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; onEditQuote: (quote: Quote) => void; onDeleteQuote: (quote: Quote) => void; user: { name: string; email: string } }) {
+function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, onCalculatorQuoteSaved, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; onEditQuote: (quote: Quote) => void; onDeleteQuote: (quote: Quote) => void; onCalculatorQuoteSaved: (quote: CalculatorQuote) => void; user: { name: string; email: string } }) {
+  if (view === 'Calculadora') return <CalculatorView onQuoteSaved={onCalculatorQuoteSaved}/>;
   if (view === 'Orçamentos') return <QuotesView quotes={quotes} onNewQuote={onNewQuote} onEdit={onEditQuote} onDelete={onDeleteQuote}/>;
   if (view === 'Pedidos') return <OrdersView />;
   if (view === 'Produção') return <Production />;
