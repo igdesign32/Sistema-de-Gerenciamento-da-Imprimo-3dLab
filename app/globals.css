@@ -148,3 +148,11 @@ body {
     @apply font-sans;
   }
 }
+
+@media print {
+  @page { size: A4; margin: 12mm; }
+  body.quote-printing > *:not(.quote-print-editor) { display: none !important; }
+  body.quote-printing .quote-print-editor { position: static !important; overflow: visible !important; padding: 0 !important; background: white !important; }
+  body.quote-printing .quote-sheet { min-height: 0 !important; width: 100% !important; max-width: none !important; box-shadow: none !important; }
+  body.quote-printing [contenteditable] { background: transparent !important; box-shadow: none !important; }
+}

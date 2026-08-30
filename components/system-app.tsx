@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Boxes, Calculator, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Factory,
   FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Pencil, Plus, Search,
@@ -150,6 +151,7 @@ function FinishedParts() {
   const [editing, setEditing] = useState<FinishedPart | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
+  const [quoteEditorOpen, setQuoteEditorOpen] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [assignedCustomer, setAssignedCustomer] = useState<Customer | null>(null);
   const [finalizing, setFinalizing] = useState(false);
@@ -211,6 +213,7 @@ function FinishedParts() {
     finally { setFinalizing(false); }
   };
   const openCustomerSelection = () => { setCartOpen(false); setCustomerOpen(true); };
+  const openQuoteEditor = () => { setCartOpen(false); setQuoteEditorOpen(true); };
   const assignCustomer = (customer: Customer) => { setAssignedCustomer(customer); setCustomerOpen(false); setCartOpen(true); };
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
@@ -255,8 +258,9 @@ function FinishedParts() {
       </table></div>
     </Card>
     <PieceDialog key={editing?.id ?? 'new'} open={pieceOpen} onOpenChange={setPieceOpen} initial={editing} onSave={savePart}/>
-    <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={finalizeSale} onAddToCustomer={openCustomerSelection} assignedCustomer={assignedCustomer} finalizing={finalizing}/>
+    <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={finalizeSale} onAddToCustomer={openCustomerSelection} onPrint={openQuoteEditor} assignedCustomer={assignedCustomer} finalizing={finalizing}/>
     <CustomerOrderDialog open={customerOpen} onOpenChange={open => { setCustomerOpen(open); if (!open) setCartOpen(true); }} onSelect={assignCustomer}/>
+    {quoteEditorOpen && <QuoteEditor parts={parts} cart={cart} customer={assignedCustomer} onClose={() => setQuoteEditorOpen(false)}/>}
   </div>;
 }
 
@@ -323,7 +327,7 @@ function SupplyDialog({ open, onOpenChange, initial, onSave }: { open: boolean; 
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{initial ? 'Editar insumo' : 'Novo insumo'}</DialogTitle><DialogDescription>Cadastre materiais extras usados na montagem e entrega dos produtos.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="Nome do insumo *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Argola Italiana"/></Field><Field label="Tipo"><Input value={type} onChange={event => setType(event.target.value)} placeholder="Ex.: Embalagem, chaveiro ou outro"/></Field><Field label="Quantidade em estoque"><Input type="number" min="0" step=".01" value={quantity} onChange={event => setQuantity(Math.max(0, Number(event.target.value)))}/></Field><Field label="Unidade"><Input value={unit} onChange={event => setUnit(event.target.value)} placeholder="un, m, kg, ml..."/></Field><Field label="Custo unitário (R$)"><Input type="number" min="0" step=".01" value={unitCost} onChange={event => setUnitCost(Math.max(0, Number(event.target.value)))}/></Field><Field label="Fornecedor"><Input value={supplier} onChange={event => setSupplier(event.target.value)} placeholder="Ex.: Shopee"/></Field></div><div className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800">Valor atual em estoque: <b>{brl(quantity * unitCost)}</b></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!name.trim()} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{initial ? 'Salvar alterações' : 'Adicionar insumo'}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
-function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, assignedCustomer, finalizing }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; assignedCustomer: Customer | null; finalizing: boolean }) {
+function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, onPrint, assignedCustomer, finalizing }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; onPrint: () => void; assignedCustomer: Customer | null; finalizing: boolean }) {
   const rows = cart.flatMap(item => { const part = parts.find(candidate => candidate.id === item.partId); return part ? [{ item, part }] : []; });
   const totalCost = rows.reduce((total, row) => total + row.part.cost * row.item.quantity, 0);
   const totalSale = rows.reduce((total, row) => total + row.item.unitPrice * row.item.quantity, 0);
@@ -342,9 +346,61 @@ function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFina
     </div>)}</div>}
     {rows.length > 0 && <><div className="rounded-xl border border-[#ff6b35]/60 bg-black/10 p-4"><div className="flex justify-between text-sm text-white/80"><span>↗ Custo total</span><b className="text-white">{brl(totalCost)}</b></div><div className="mt-2 flex justify-between text-sm text-white/80"><span>$ Lucro estimado</span><b className="text-emerald-300">{brl(estimatedProfit)}</b></div><div className="mt-4 flex items-center justify-between border-t border-white/20 pt-4"><b>Total da venda</b><b className="text-2xl text-[#ff6b35]">{brl(totalSale)}</b></div></div>
       {assignedCustomer && <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"><UserPlus className="size-4"/> Pedido vinculado a <b>{assignedCustomer.name}</b></div>}
-      <div className="grid gap-2 sm:grid-cols-3"><Button onClick={() => window.print()} variant="outline" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Printer/> Imprimir orçamento</Button><Button onClick={onAddToCustomer} variant="outline" className="border-[#ff8358]/50 bg-[#ff6b35]/10 text-[#ff9b77] hover:bg-[#ff6b35]/20 hover:text-white"><UserPlus/> {assignedCustomer ? 'Trocar cliente' : 'Adicionar ao cliente'}</Button><Button onClick={onFinalize} disabled={finalizing} className="bg-[#ff6b35] text-white shadow-lg shadow-[#ff6b35]/20 hover:bg-[#e85c2b]"><CheckCircle2/> {finalizing ? 'Salvando...' : 'Finalizar pedido'}</Button></div>
+      <div className="grid gap-2 sm:grid-cols-3"><Button onClick={onPrint} variant="outline" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Printer/> Imprimir orçamento</Button><Button onClick={onAddToCustomer} variant="outline" className="border-[#ff8358]/50 bg-[#ff6b35]/10 text-[#ff9b77] hover:bg-[#ff6b35]/20 hover:text-white"><UserPlus/> {assignedCustomer ? 'Trocar cliente' : 'Adicionar ao cliente'}</Button><Button onClick={onFinalize} disabled={finalizing} className="bg-[#ff6b35] text-white shadow-lg shadow-[#ff6b35]/20 hover:bg-[#e85c2b]"><CheckCircle2/> {finalizing ? 'Salvando...' : 'Finalizar pedido'}</Button></div>
       <p className="text-center text-[10px] text-slate-500">“Finalizar pedido” desconta automaticamente as quantidades do estoque.</p></>}
   </DialogContent></Dialog>;
+}
+
+function QuoteEditor({ parts, cart, customer, onClose }: { parts: FinishedPart[]; cart: CartItem[]; customer: Customer | null; onClose: () => void }) {
+  const rows = cart.flatMap(item => { const part = parts.find(candidate => candidate.id === item.partId); return part ? [{ item, part }] : []; });
+  const total = rows.reduce((sum, row) => sum + row.item.quantity * row.item.unitPrice, 0);
+  const createdAt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date());
+  const printQuote = () => {
+    document.body.classList.add('quote-printing');
+    const finish = () => document.body.classList.remove('quote-printing');
+    window.addEventListener('afterprint', finish, { once: true });
+    window.print();
+    window.setTimeout(finish, 1000);
+  };
+
+  if (typeof document === 'undefined') return null;
+  return createPortal(<div className="quote-print-editor fixed inset-0 z-[100] overflow-y-auto bg-slate-100 p-4 text-slate-900 sm:p-8">
+    <div className="mx-auto mb-4 flex max-w-[850px] flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm print:hidden sm:flex-row sm:items-center">
+      <div className="flex-1"><b>Modo de Edição:</b> Você pode clicar em qualquer texto do orçamento abaixo para alterá-lo livremente.</div>
+      <div className="flex gap-2"><Button onClick={onClose} variant="outline" className="bg-white"><X/> Voltar</Button><Button onClick={printQuote} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Printer/> Imprimir</Button></div>
+    </div>
+
+    <article className="quote-sheet mx-auto min-h-[1100px] max-w-[850px] bg-white px-8 py-10 shadow-xl print:min-h-0 print:max-w-none print:shadow-none sm:px-14 sm:py-12">
+      <header className="flex flex-col gap-7 border-b-2 border-[#0068ff] pb-7 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start"><img src="/imprimo3dlab-logo-color.png" alt="Imprimo3DLab" className="h-24 w-56 object-contain object-left-top"/></div>
+        <div className="min-w-[270px] text-sm">
+          <EditableText className="block text-2xl font-bold text-slate-950">Orçamento de Venda</EditableText>
+          <EditableText className="mt-1 block text-xs text-slate-500">{createdAt}</EditableText>
+          <div className="mt-3 flex gap-1"><span className="font-semibold">Cliente:</span><EditableText className="min-w-40 border-b border-slate-400 px-1">{customer?.name || 'Nome do cliente'}</EditableText></div>
+          <div className="mt-1 flex gap-1"><span className="font-semibold">Contato:</span><EditableText className="min-w-40 border-b border-slate-400 px-1">{customer?.phone || customer?.email || 'Telefone ou e-mail'}</EditableText></div>
+        </div>
+      </header>
+
+      <div className="mt-10 overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead><tr className="border-y bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-500"><th className="px-3 py-3">Produto</th><th className="px-3 py-3 text-center">Qtd.</th><th className="px-3 py-3 text-right">Preço unit.</th><th className="px-3 py-3 text-right">Total</th></tr></thead>
+          <tbody>{rows.map(({ item, part }) => <tr key={part.id} className="border-b border-slate-200"><td className="px-3 py-4"><EditableText className="font-medium">{part.sku} — {part.name}</EditableText></td><td className="px-3 py-4 text-center"><EditableText>{item.quantity}</EditableText></td><td className="px-3 py-4 text-right"><EditableText>{brl(item.unitPrice)}</EditableText></td><td className="px-3 py-4 text-right font-bold"><EditableText>{brl(item.quantity * item.unitPrice)}</EditableText></td></tr>)}</tbody>
+        </table>
+      </div>
+
+      <div className="mt-8 flex justify-end"><div className="min-w-[260px] rounded-xl bg-[#0068ff] px-6 py-5 text-right text-white"><EditableText className="block text-xs font-semibold uppercase tracking-wide text-blue-100">Total da venda</EditableText><EditableText className="mt-1 block text-4xl font-extrabold">{brl(total)}</EditableText></div></div>
+
+      <section className="mt-12 grid gap-6 border-t border-slate-200 pt-7 text-xs text-slate-600 sm:grid-cols-2">
+        <div><EditableText className="block font-bold text-slate-900">Condições do orçamento</EditableText><EditableText className="mt-2 block leading-5">Orçamento válido por 7 dias. Prazo de produção definido após a aprovação.</EditableText></div>
+        <div><EditableText className="block font-bold text-slate-900">Forma de pagamento</EditableText><EditableText className="mt-2 block leading-5">Pagamento conforme combinado com o cliente.</EditableText></div>
+      </section>
+      <footer className="mt-16 text-center text-xs text-slate-400"><EditableText>Imprimo3DLab — Gerenciamento e Impressão 3D</EditableText></footer>
+    </article>
+  </div>, document.body);
+}
+
+function EditableText({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <span contentEditable suppressContentEditableWarning className={`rounded-sm outline-none transition hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-[#0068ff]/30 ${className}`}>{children}</span>;
 }
 
 function CustomerOrderDialog({ open, onOpenChange, onSelect }: { open: boolean; onOpenChange: (open: boolean) => void; onSelect: (customer: Customer) => void }) {
