@@ -26,12 +26,15 @@ export async function GET() {
 export async function PUT(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const body = await request.json() as { id?: string; status?: string; customerId?: string };
+  const body = await request.json() as { id?: string; status?: string; customerId?: string; packageName?: string; createdAt?: string };
   const id = String(body.id ?? '').trim();
   const statusMap: Record<string, string> = { 'Aguardando fila': 'waiting_queue', 'Em andamento': 'approved', Finalizado: 'delivered', Cancelado: 'cancelled' };
   const storedStatus = body.status === undefined ? undefined : statusMap[String(body.status)];
   const customerId = body.customerId === undefined ? undefined : String(body.customerId).trim();
-  if (!id || (storedStatus === undefined && customerId === undefined) || (body.status !== undefined && !storedStatus) || (body.customerId !== undefined && !customerId)) return Response.json({ error: 'Dados do pedido inválidos' }, { status: 400 });
+  const packageName = body.packageName === undefined ? undefined : String(body.packageName).trim();
+  const createdAt = body.createdAt === undefined ? undefined : String(body.createdAt).trim();
+  const hasUpdate = storedStatus !== undefined || customerId !== undefined || packageName !== undefined || createdAt !== undefined;
+  if (!id || !hasUpdate || (body.status !== undefined && !storedStatus) || (body.customerId !== undefined && !customerId) || (body.packageName !== undefined && !packageName) || (body.createdAt !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(createdAt ?? ''))) return Response.json({ error: 'Dados do pedido inválidos' }, { status: 400 });
   const order = await env.DB.prepare(`SELECT id FROM orders WHERE id = ?`).bind(id).first();
   if (!order) return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
   if (customerId !== undefined) {
@@ -41,9 +44,11 @@ export async function PUT(request: Request) {
   const statements = [];
   if (storedStatus !== undefined) statements.push(env.DB.prepare(`UPDATE orders SET status = ?, updated_at = unixepoch() WHERE id = ?`).bind(storedStatus, id));
   if (customerId !== undefined) statements.push(env.DB.prepare(`UPDATE orders SET customer_id = ?, updated_at = unixepoch() WHERE id = ?`).bind(customerId, id));
-  statements.push(env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'updated', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, id, JSON.stringify({ status: body.status, customerId })));
+  if (packageName !== undefined) statements.push(env.DB.prepare(`UPDATE orders SET notes = ?, updated_at = unixepoch() WHERE id = ?`).bind(packageName, id));
+  if (createdAt !== undefined) statements.push(env.DB.prepare(`UPDATE orders SET created_at = CAST(strftime('%s', ? || ' 12:00:00') AS INTEGER), updated_at = unixepoch() WHERE id = ?`).bind(createdAt, id));
+  statements.push(env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'updated', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, id, JSON.stringify({ status: body.status, customerId, packageName, createdAt })));
   await env.DB.batch(statements);
-  return Response.json({ ok: true, id, status: body.status, customerId });
+  return Response.json({ ok: true, id, status: body.status, customerId, packageName, createdAt });
 }
 
 export async function DELETE(request: Request) {
