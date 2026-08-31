@@ -13,8 +13,23 @@ type StoredQuote = { id: string; customer_name: string; item_name: string; total
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(oi.quantity), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'ready' THEN 'Pronto' WHEN 'delivered' THEN 'Entregue' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`).all();
+  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(oi.quantity), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`).all();
   return Response.json(result.results);
+}
+
+export async function PUT(request: Request) {
+  const user = await getChatGPTUser();
+  if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
+  const body = await request.json() as { id?: string; status?: string };
+  const id = String(body.id ?? '').trim();
+  const statusMap: Record<string, string> = { 'Em andamento': 'approved', Finalizado: 'delivered', Cancelado: 'cancelled' };
+  const storedStatus = statusMap[String(body.status ?? '')];
+  if (!id || !storedStatus) return Response.json({ error: 'Pedido ou status inválido' }, { status: 400 });
+
+  const result = await env.DB.prepare(`UPDATE orders SET status = ?, updated_at = unixepoch() WHERE id = ?`).bind(storedStatus, id).run();
+  if (!result.meta.changes) return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
+  await env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'status_updated', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, id, JSON.stringify({ status: body.status })).run();
+  return Response.json({ ok: true, id, status: body.status });
 }
 
 export async function POST(request: Request) {

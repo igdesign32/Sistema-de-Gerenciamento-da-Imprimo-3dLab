@@ -196,9 +196,30 @@ function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, onConver
 function OrdersView() {
   const [orders, setOrders] = useState<Array<{ id: string; customer: string; items: string; quantity: number; total: number; status: string; createdAt: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState('');
+  const [error, setError] = useState('');
   useEffect(() => { void fetch('/api/orders').then(response => response.ok ? response.json() : Promise.reject()).then(result => setOrders(result as typeof orders)).catch(() => setOrders([])).finally(() => setLoading(false)); }, []);
-  const rows = orders.map(order => [order.id, order.customer, `${order.items} · ${order.quantity} un.`, order.createdAt, brl(order.total), order.status]);
-  return <ModuleShell title={`${orders.length} pedidos salvos`} detail="Pedidos finalizados pelo carrinho de peças" action="Novo pedido"><DataTable headers={['Pedido','Cliente','Itens','Criado em','Valor','Status']} rows={rows}/>{loading && <p className="p-6 text-center text-sm text-slate-400">Carregando pedidos...</p>}{!loading && !orders.length && <p className="p-6 text-center text-sm text-slate-400">Nenhum pedido finalizado.</p>}</ModuleShell>;
+  const statusClass = (status: string) => status === 'Finalizado' ? 'bg-emerald-100 text-emerald-800 ring-emerald-200' : status === 'Cancelado' ? 'bg-red-100 text-red-700 ring-red-200' : 'bg-amber-100 text-amber-800 ring-amber-200';
+  const updateStatus = async (orderId: string, status: string) => {
+    const previous = orders.find(order => order.id === orderId)?.status ?? 'Em andamento';
+    setOrders(current => current.map(order => order.id === orderId ? { ...order, status } : order));
+    setSavingId(orderId);
+    setError('');
+    try {
+      const response = await fetch('/api/orders', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: orderId, status }) });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível atualizar o status.');
+    } catch (problem) {
+      setOrders(current => current.map(order => order.id === orderId ? { ...order, status: previous } : order));
+      setError(problem instanceof Error ? problem.message : 'Não foi possível atualizar o status.');
+    } finally {
+      setSavingId('');
+    }
+  };
+  return <ModuleShell title={`${orders.length} pedidos salvos`} detail="Acompanhe e atualize o andamento dos pedidos" action="Novo pedido">
+    <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Pedido','Cliente','Itens','Criado em','Valor','Status'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{orders.map(order => <tr key={order.id} className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{order.id}</td><td className="px-4 py-3 text-xs text-slate-600">{order.customer}</td><td className="px-4 py-3 text-xs text-slate-600">{order.items} · {order.quantity} un.</td><td className="px-4 py-3 text-xs text-slate-600">{order.createdAt}</td><td className="px-4 py-3 text-xs text-slate-600">{brl(order.total)}</td><td className="px-4 py-2"><select aria-label={`Status do pedido ${order.id}`} value={order.status} disabled={savingId === order.id} onChange={event => void updateStatus(order.id, event.target.value)} className={`h-8 cursor-pointer rounded-full border-0 px-3 text-xs font-semibold outline-none ring-1 transition focus:ring-2 focus:ring-[#0068ff] disabled:cursor-wait disabled:opacity-60 ${statusClass(order.status)}`}><option value="Em andamento">Em andamento</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select></td></tr>)}</tbody></table></div>
+    {loading && <p className="p-6 text-center text-sm text-slate-400">Carregando pedidos...</p>}{!loading && !orders.length && <p className="p-6 text-center text-sm text-slate-400">Nenhum pedido salvo.</p>}{error && <p role="alert" className="border-t bg-red-50 px-4 py-3 text-xs font-medium text-red-700">{error}</p>}
+  </ModuleShell>;
 }
 
 function CustomersView() {
