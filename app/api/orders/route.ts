@@ -3,7 +3,7 @@ import { getChatGPTUser } from '@/app/chatgpt-auth';
 
 type OrderInput = {
   customerId?: string | null;
-  items?: Array<{ partId?: string; quantity?: number; unitPrice?: number }>;
+  items?: Array<{ partId?: string; quantity?: number; unitPrice?: number; supplies?: Array<{ supplyId?: string; quantity?: number }> }>;
   quote?: { id?: string; client?: string; item?: string; total?: number; quantity?: number; unitPrice?: number; grams?: number; hours?: number; energyRate?: number; machineRate?: number; packaging?: number; fees?: number; margin?: number };
 };
 
@@ -14,7 +14,7 @@ type StoredOrderItem = { inventory_item_id: string | null; quantity: number };
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(oi.quantity), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'waiting_queue' THEN 'Aguardando fila' WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC`).all();
+  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(CASE WHEN oi.item_name LIKE 'Insumo: %' THEN 0 ELSE oi.quantity END), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'waiting_queue' THEN 'Aguardando fila' WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC`).all();
   return Response.json(result.results);
 }
 
@@ -119,9 +119,26 @@ export async function POST(request: Request) {
     if (part.quantity < requested) return Response.json({ error: `Estoque insuficiente para ${part.name}` }, { status: 409 });
   }
 
+  const requestedSupplies = new Map<string, number>();
+  items.forEach(item => (item.supplies ?? []).forEach(supply => {
+    const id = String(supply.supplyId ?? '').trim();
+    const quantity = Number(supply.quantity);
+    if (id && Number.isFinite(quantity) && quantity > 0) requestedSupplies.set(id, (requestedSupplies.get(id) ?? 0) + quantity);
+  }));
+  const supplyEntries = await Promise.all([...requestedSupplies].map(async ([id, quantity]) => ({
+    quantity,
+    supply: await env.DB.prepare(`SELECT id, name, quantity, unit_cost FROM inventory_items WHERE id = ? AND category = 'supply' AND active = 1`).bind(id).first<StoredPart>(),
+  })));
+  for (const entry of supplyEntries) {
+    if (!entry.supply) return Response.json({ error: 'Um dos insumos não existe mais no estoque' }, { status: 409 });
+    if (entry.supply.quantity < entry.quantity) return Response.json({ error: `Estoque insuficiente para ${entry.supply.name}` }, { status: 409 });
+  }
+
   const orderId = `PED-${Date.now()}`;
   const totalPrice = items.reduce((total, item) => total + Number(item.quantity) * Number(item.unitPrice), 0);
-  const totalCost = items.reduce((total, item, index) => total + Number(item.quantity) * Number(storedParts[index]?.unit_cost ?? 0), 0);
+  const partsCost = items.reduce((total, item, index) => total + Number(item.quantity) * Number(storedParts[index]?.unit_cost ?? 0), 0);
+  const suppliesCost = supplyEntries.reduce((total, entry) => total + entry.quantity * Number(entry.supply?.unit_cost ?? 0), 0);
+  const totalCost = partsCost + suppliesCost;
   const estimatedProfit = totalPrice - totalCost;
   const statements = [
     env.DB.prepare(`INSERT INTO orders (id, customer_id, status, total_price, total_cost, estimated_profit, created_at, updated_at) VALUES (?, ?, 'ready', ?, ?, ?, unixepoch(), unixepoch())`).bind(orderId, customerId, totalPrice, totalCost, estimatedProfit),
@@ -133,6 +150,11 @@ export async function POST(request: Request) {
     const unitPrice = Number(item.unitPrice);
     statements.push(env.DB.prepare(`INSERT INTO order_items (id, order_id, inventory_item_id, item_name, quantity, unit_cost, unit_price, subtotal, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())`).bind(crypto.randomUUID(), orderId, part.id, part.name, quantity, part.unit_cost, unitPrice, quantity * unitPrice));
     statements.push(env.DB.prepare(`UPDATE inventory_items SET quantity = quantity - ?, updated_at = unixepoch() WHERE id = ? AND quantity >= ?`).bind(quantity, part.id, quantity));
+  });
+  supplyEntries.forEach(({ supply, quantity }) => {
+    if (!supply) return;
+    statements.push(env.DB.prepare(`INSERT INTO order_items (id, order_id, inventory_item_id, item_name, quantity, unit_cost, unit_price, subtotal, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, unixepoch(), unixepoch())`).bind(crypto.randomUUID(), orderId, supply.id, `Insumo: ${supply.name}`, quantity, supply.unit_cost));
+    statements.push(env.DB.prepare(`UPDATE inventory_items SET quantity = quantity - ?, updated_at = unixepoch() WHERE id = ? AND quantity >= ?`).bind(quantity, supply.id, quantity));
   });
   statements.push(env.DB.prepare(`INSERT INTO transactions (id, order_id, type, category, description, amount, due_at, created_by, created_at, updated_at) VALUES (?, ?, 'income', 'Venda de peças finalizadas', ?, ?, unixepoch(), ?, unixepoch(), unixepoch())`).bind(crypto.randomUUID(), orderId, `Pedido ${orderId}`, totalPrice, user.userId));
   statements.push(env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'created', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, orderId, JSON.stringify({ customerId, items, totalPrice, totalCost, estimatedProfit })));

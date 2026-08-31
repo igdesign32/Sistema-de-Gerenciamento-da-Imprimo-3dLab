@@ -252,7 +252,8 @@ function CustomersView() {
 }
 
 type FinishedPart = { id: string; sku: string; name: string; detail: string; stock: number; color: string; cost: number; price: number };
-type CartItem = { partId: string; quantity: number; unitPrice: number };
+type CartSupply = { supplyId: string; name: string; quantity: number; unit: string; unitCost: number };
+type CartItem = { partId: string; quantity: number; unitPrice: number; supplies?: CartSupply[] };
 type Customer = { id: string; name: string; phone: string; email: string };
 type Supply = { id: string; name: string; type: string; quantity: number; unit: string; unitCost: number; supplier: string };
 
@@ -443,21 +444,54 @@ function SupplyDialog({ open, onOpenChange, initial, onSave }: { open: boolean; 
 }
 
 function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, onPrint, assignedCustomer, finalizing }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; onPrint: () => void; assignedCustomer: Customer | null; finalizing: boolean }) {
+  const [supplies, setSupplies] = useState<Supply[]>([]);
+  const [selectedSupply, setSelectedSupply] = useState<Record<string, string>>({});
+  const [supplyQuantity, setSupplyQuantity] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!open) return;
+    void fetch('/api/supplies').then(response => response.ok ? response.json() : Promise.reject()).then(result => setSupplies(result as Supply[])).catch(() => setSupplies([]));
+  }, [open]);
   const rows = cart.flatMap(item => { const part = parts.find(candidate => candidate.id === item.partId); return part ? [{ item, part }] : []; });
-  const totalCost = rows.reduce((total, row) => total + row.part.cost * row.item.quantity, 0);
+  const supplyCost = (item: CartItem) => (item.supplies ?? []).reduce((total, supply) => total + supply.quantity * supply.unitCost, 0);
+  const totalCost = rows.reduce((total, row) => total + row.part.cost * row.item.quantity + supplyCost(row.item), 0);
   const totalSale = rows.reduce((total, row) => total + row.item.unitPrice * row.item.quantity, 0);
   const estimatedProfit = totalSale - totalCost;
   const update = (partId: string, values: Partial<CartItem>) => onCartChange(cart.map(item => item.partId === partId ? { ...item, ...values } : item));
+  const addSupply = (item: CartItem) => {
+    const supply = supplies.find(candidate => candidate.id === selectedSupply[item.partId]);
+    if (!supply) return;
+    const existingQuantity = (item.supplies ?? []).find(candidate => candidate.supplyId === supply.id)?.quantity ?? 0;
+    const quantity = Math.min(Math.max(1, supplyQuantity[item.partId] ?? 1), Math.max(0, supply.quantity - existingQuantity));
+    if (quantity <= 0) return;
+    const nextSupplies = (item.supplies ?? []).some(candidate => candidate.supplyId === supply.id)
+      ? (item.supplies ?? []).map(candidate => candidate.supplyId === supply.id ? { ...candidate, quantity: candidate.quantity + quantity } : candidate)
+      : [...(item.supplies ?? []), { supplyId: supply.id, name: supply.name, quantity, unit: supply.unit, unitCost: supply.unitCost }];
+    update(item.partId, { supplies: nextSupplies });
+    setSupplyQuantity(current => ({ ...current, [item.partId]: 1 }));
+  };
+  const removeSupply = (item: CartItem, supplyId: string) => update(item.partId, { supplies: (item.supplies ?? []).filter(supply => supply.supplyId !== supplyId) });
 
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[92vh] overflow-y-auto border-white/20 bg-[#124787] text-white sm:max-w-2xl">
     <DialogHeader><DialogTitle className="flex items-center gap-2 text-xl text-white"><ShoppingCart className="size-5 text-[#ff6b35]"/> Carrinho de Vendas</DialogTitle><DialogDescription className="text-slate-200">Ajuste preços, quantidades e finalize o pedido ou imprima o orçamento.</DialogDescription></DialogHeader>
     {rows.length === 0 ? <div className="rounded-xl border border-dashed border-white/35 px-5 py-12 text-center"><ShoppingCart className="mx-auto size-8 text-white/55"/><p className="mt-3 text-sm font-medium">Seu carrinho está vazio</p><p className="mt-1 text-xs text-white/70">Clique em “Vender” em uma peça para adicioná-la.</p></div> : <div className="space-y-3">{rows.map(({ item, part }) => <div key={part.id} className="rounded-xl border border-white/20 bg-black/10 p-4">
       <div className="flex items-start justify-between gap-3"><div><b className="text-sm">{part.sku} — {part.name}</b><p className="text-[11px] text-slate-400">Estoque disponível: {part.stock} un.</p></div><Button onClick={() => onCartChange(cart.filter(candidate => candidate.partId !== part.id))} aria-label={`Remover ${part.name} do carrinho`} variant="ghost" size="icon" className="text-slate-400 hover:bg-white/10 hover:text-white"><X/></Button></div>
-      <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_1.35fr]">
+      <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_180px] sm:items-end">
         <div><p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-white/70">Quantidade</p><div className="flex items-center gap-1"><Button onClick={() => update(part.id, { quantity: Math.max(1, item.quantity - 1) })} variant="outline" size="icon" className="border-white/30 bg-transparent text-white hover:bg-white/10"><Minus/></Button><div className="grid h-9 min-w-16 place-items-center rounded-lg bg-white/20 text-sm font-bold">{item.quantity}</div><Button onClick={() => update(part.id, { quantity: Math.min(part.stock, item.quantity + 1) })} variant="outline" size="icon" className="border-white/30 bg-transparent text-white hover:bg-white/10"><Plus/></Button></div></div>
         <Field label="Preço unitário (R$)" dark><Input type="number" min="0" step=".01" value={item.unitPrice} onChange={event => update(part.id, { unitPrice: Math.max(0, Number(event.target.value)) })} className="border-white/30 bg-white/20 text-white"/></Field>
       </div>
-      <div className="mt-4 flex justify-between border-t border-slate-700 pt-3 text-xs text-slate-400"><span>Custo: <b className="text-slate-200">{brl(part.cost * item.quantity)}</b></span><span className="font-semibold text-[#ff8358]">Subtotal: {brl(item.unitPrice * item.quantity)}</span></div>
+      <div className="mt-4 rounded-lg border border-white/15 bg-[#032c5e]/70 p-3">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-white/70">Insumo adicional (opcional)</p>
+        <div className="grid gap-2 sm:grid-cols-[1fr_76px_auto]">
+          <select value={selectedSupply[item.partId] ?? ''} onChange={event => setSelectedSupply(current => ({ ...current, [item.partId]: event.target.value }))} className="h-9 min-w-0 rounded-md border border-white/25 bg-[#032c5e] px-3 text-xs text-white outline-none focus:border-[#ff8358]">
+            <option value="">Selecionar insumo do estoque...</option>
+            {supplies.filter(supply => supply.quantity > 0).map(supply => <option key={supply.id} value={supply.id}>{supply.name} · {supply.quantity} {supply.unit}</option>)}
+          </select>
+          <Input aria-label={`Quantidade de insumo para ${part.name}`} type="number" min="1" step="1" value={supplyQuantity[item.partId] ?? 1} onChange={event => setSupplyQuantity(current => ({ ...current, [item.partId]: Math.max(1, Number(event.target.value) || 1) }))} className="border-white/25 bg-[#032c5e] text-white"/>
+          <Button type="button" onClick={() => addSupply(item)} disabled={!selectedSupply[item.partId]} size="sm" className="bg-white/15 text-white hover:bg-white/25"><Plus/> Adicionar</Button>
+        </div>
+        {(item.supplies ?? []).length > 0 && <div className="mt-2 space-y-1">{(item.supplies ?? []).map(supply => <div key={supply.supplyId} className="flex items-center justify-between rounded-md bg-white/10 px-2 py-1.5 text-xs"><span>{supply.name} · {supply.quantity} {supply.unit}</span><span className="flex items-center gap-2"><b>{brl(supply.quantity * supply.unitCost)}</b><button type="button" onClick={() => removeSupply(item, supply.supplyId)} aria-label={`Remover insumo ${supply.name}`} className="rounded p-1 text-white/65 hover:bg-white/10 hover:text-red-300"><Trash2 className="size-3.5"/></button></span></div>)}</div>}
+      </div>
+      <div className="mt-4 flex justify-between border-t border-slate-700 pt-3 text-xs text-slate-400"><span>Custo: <b className="text-slate-200">{brl(part.cost * item.quantity + supplyCost(item))}</b></span><span className="font-semibold text-[#ff8358]">Subtotal: {brl(item.unitPrice * item.quantity)}</span></div>
     </div>)}</div>}
     {rows.length > 0 && <><div className="rounded-xl border border-[#ff6b35]/60 bg-black/10 p-4"><div className="flex justify-between text-sm text-white/80"><span>↗ Custo total</span><b className="text-white">{brl(totalCost)}</b></div><div className="mt-2 flex justify-between text-sm text-white/80"><span>$ Lucro estimado</span><b className="text-emerald-300">{brl(estimatedProfit)}</b></div><div className="mt-4 flex items-center justify-between border-t border-white/20 pt-4"><b>Total da venda</b><b className="text-2xl text-[#ff6b35]">{brl(totalSale)}</b></div></div>
       {assignedCustomer && <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"><UserPlus className="size-4"/> Pedido vinculado a <b>{assignedCustomer.name}</b></div>}
