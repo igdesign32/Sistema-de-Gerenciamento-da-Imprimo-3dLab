@@ -4,14 +4,16 @@ import { getChatGPTUser } from '@/app/chatgpt-auth';
 type OrderInput = {
   customerId?: string | null;
   items?: Array<{ partId?: string; quantity?: number; unitPrice?: number }>;
+  quote?: { id?: string; client?: string; item?: string; total?: number; quantity?: number; unitPrice?: number; grams?: number; hours?: number; energyRate?: number; machineRate?: number; packaging?: number; fees?: number; margin?: number };
 };
 
 type StoredPart = { id: string; name: string; quantity: number; unit_cost: number };
+type StoredQuote = { id: string; customer_name: string; item_name: string; total_price: number; total_cost: number };
 
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), 'Sem itens') AS items, SUM(oi.quantity) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'ready' THEN 'Pronto' WHEN 'delivered' THEN 'Entregue' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`).all();
+  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(oi.quantity), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'ready' THEN 'Pronto' WHEN 'delivered' THEN 'Entregue' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`).all();
   return Response.json(result.results);
 }
 
@@ -19,6 +21,50 @@ export async function POST(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
   const body = await request.json() as OrderInput;
+
+  if (body.quote) {
+    const quoteId = String(body.quote.id ?? '').trim();
+    const quantity = Math.max(1, Number(body.quote.quantity) || 1);
+    if (!quoteId) return Response.json({ error: 'Orçamento não informado' }, { status: 400 });
+
+    let quote = await env.DB.prepare(`SELECT id, customer_name, item_name, total_price, material_cost + energy_cost + machine_cost + packaging_cost + finishing_cost + fees_cost AS total_cost FROM quotes WHERE id = ?`).bind(quoteId).first<StoredQuote>();
+    if (!quote) {
+      const client = String(body.quote.client ?? 'Cliente não informado').trim() || 'Cliente não informado';
+      const item = String(body.quote.item ?? '').trim();
+      const total = Math.max(0, Number(body.quote.total) || 0);
+      if (!item || total <= 0) return Response.json({ error: 'O orçamento precisa ter item e valor antes de ser enviado para Pedidos.' }, { status: 400 });
+      const grams = Math.max(0, Number(body.quote.grams) || 0);
+      const hours = Math.max(0, Number(body.quote.hours) || 0);
+      const energyRate = Math.max(0, Number(body.quote.energyRate) || 0);
+      const machineRate = Math.max(0, Number(body.quote.machineRate) || 0);
+      const packaging = Math.max(0, Number(body.quote.packaging) || 0);
+      const fees = Math.max(0, Number(body.quote.fees) || 0);
+      const margin = Math.max(0, Number(body.quote.margin) || 0);
+      const materialCost = grams * 0.095;
+      const energyCost = hours * energyRate;
+      const machineCost = hours * machineRate;
+      const feesCost = (materialCost + energyCost + machineCost + packaging) * fees / 100;
+      await env.DB.prepare(`INSERT INTO quotes (id, customer_name, item_name, status, material_type, material_grams, material_cost, print_hours, energy_rate, energy_cost, machine_hourly_rate, machine_cost, packaging_cost, finishing_cost, fees_percent, fees_cost, margin_percent, total_price, notes, created_by, created_at, updated_at) VALUES (?, ?, ?, 'draft', 'PLA', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, '', ?, unixepoch(), unixepoch())`).bind(quoteId, client, item, grams, materialCost, hours, energyRate, energyCost, machineRate, machineCost, packaging, fees, feesCost, margin, total, user.userId).run();
+      quote = await env.DB.prepare(`SELECT id, customer_name, item_name, total_price, material_cost + energy_cost + machine_cost + packaging_cost + finishing_cost + fees_cost AS total_cost FROM quotes WHERE id = ?`).bind(quoteId).first<StoredQuote>();
+    }
+    if (!quote) return Response.json({ error: 'Não foi possível preparar o orçamento para Pedidos.' }, { status: 500 });
+
+    const existing = await env.DB.prepare(`SELECT id FROM orders WHERE quote_id = ?`).bind(quoteId).first<{ id: string }>();
+    if (existing) return Response.json({ id: existing.id, alreadyExists: true });
+
+    const orderId = `PED-${Date.now()}`;
+    const totalPrice = Number(quote.total_price);
+    const totalCost = Number(quote.total_cost);
+    const estimatedProfit = totalPrice - totalCost;
+    const unitPrice = Number(body.quote.unitPrice) > 0 ? Number(body.quote.unitPrice) : totalPrice / quantity;
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO orders (id, quote_id, status, total_price, total_cost, estimated_profit, notes, created_at, updated_at) VALUES (?, ?, 'approved', ?, ?, ?, ?, unixepoch(), unixepoch())`).bind(orderId, quoteId, totalPrice, totalCost, estimatedProfit, `Convertido do orçamento ${quoteId}`),
+      env.DB.prepare(`INSERT INTO order_items (id, order_id, inventory_item_id, item_name, quantity, unit_cost, unit_price, subtotal, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, unixepoch(), unixepoch())`).bind(crypto.randomUUID(), orderId, quote.item_name, quantity, totalCost / quantity, unitPrice, totalPrice),
+      env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'created_from_quote', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, orderId, JSON.stringify({ quoteId, quantity, totalPrice, totalCost, estimatedProfit })),
+    ]);
+    return Response.json({ id: orderId, quoteId, totalPrice, totalCost, estimatedProfit }, { status: 201 });
+  }
+
   const items = body.items ?? [];
   if (!items.length || items.some(item => !item.partId || Number(item.quantity) <= 0 || Number(item.unitPrice) < 0)) return Response.json({ error: 'O carrinho contém itens inválidos' }, { status: 400 });
 
