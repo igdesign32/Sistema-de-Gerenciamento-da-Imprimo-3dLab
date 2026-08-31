@@ -16,6 +16,7 @@ import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { CalculatorView, type CalculatorQuote } from '@/components/calculator-view';
 import { FinanceView } from '@/components/finance-view';
+import { defaultPricingDefaults, type PricingDefaults } from '@/lib/pricing-defaults';
 
 type View = 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Pedidos' | 'Produção' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
 type Quote = { id: string; client: string; item: string; date: string; total: string; status: string; quantity?: number; unitPrice?: number };
@@ -492,6 +493,35 @@ function Production() {
 }
 
 function SettingsView({ user }: { user: { name: string; email: string } }) {
+  const [pricing, setPricing] = useState<PricingDefaults>(defaultPricingDefaults);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    void fetch('/api/settings')
+      .then(response => response.ok ? response.json() : Promise.reject())
+      .then((settings: PricingDefaults) => setPricing(settings))
+      .catch(() => setPricing(defaultPricingDefaults));
+  }, []);
+
+  const updatePricing = (key: keyof PricingDefaults, value: number) => {
+    setPricing(current => ({ ...current, [key]: Math.max(0, value) }));
+  };
+  const savePricing = async () => {
+    setSaving(true);
+    setNotice('');
+    try {
+      const response = await fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(pricing) });
+      if (!response.ok) throw new Error('Falha ao salvar');
+      setPricing(await response.json() as PricingDefaults);
+      setNotice('Parâmetros padrão salvos.');
+    } catch {
+      setNotice('Não foi possível salvar os parâmetros.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return <div className="grid gap-5 xl:grid-cols-[1fr_.8fr]">
     <div className="space-y-5">
       <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]">
@@ -514,26 +544,35 @@ function SettingsView({ user }: { user: { name: string; email: string } }) {
       </Card>
     </div>
     <div className="space-y-5">
-      <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader><CardTitle>Parâmetros de precificação</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2"><Setting label="Energia (R$/kWh)" value="0,86"/><Setting label="Máquina (R$/hora)" value="3,40"/><Setting label="Embalagem padrão" value="8,00"/><Setting label="Margem padrão (%)" value="35"/><Setting label="Taxas / impostos (%)" value="8"/><Setting label="Perdas padrão (%)" value="5"/></CardContent></Card>
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader><CardTitle>Parâmetros de precificação</CardTitle><p className="text-xs text-slate-500">Estes valores serão usados automaticamente em novos orçamentos.</p></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><PricingSetting label="Energia (R$/kWh)" value={pricing.energyRate} onChange={value => updatePricing('energyRate', value)}/><PricingSetting label="Máquina (R$/hora)" value={pricing.machineRate} onChange={value => updatePricing('machineRate', value)}/><PricingSetting label="Embalagem padrão" value={pricing.packaging} onChange={value => updatePricing('packaging', value)}/><PricingSetting label="Margem padrão (%)" value={pricing.margin} onChange={value => updatePricing('margin', value)}/><PricingSetting label="Taxas / impostos (%)" value={pricing.fees} onChange={value => updatePricing('fees', value)}/><PricingSetting label="Perdas padrão (%)" value={pricing.risk} onChange={value => updatePricing('risk', value)}/></div><Button onClick={savePricing} disabled={saving} className="w-full bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{saving ? 'Salvando...' : 'Salvar parâmetros'}</Button>{notice && <p className="text-center text-xs text-slate-500">{notice}</p>}</CardContent></Card>
       <Card className="border-0 bg-[var(--brand-blue)] text-white shadow-sm ring-0"><CardHeader><CardTitle className="text-white">Pronto para evoluir</CardTitle></CardHeader><CardContent className="space-y-2 text-xs text-white/80">{['PDF de orçamento com identidade visual','Envio por WhatsApp','Upload de STL / 3MF e fotos','Histórico completo de alterações','Integrações com marketplaces'].map(x => <p key={x}>○ {x}</p>)}</CardContent></Card>
     </div>
   </div>;
 }
 
 function QuoteDialog({ open, onOpenChange, onSave, sequence }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (q: Quote, p: Record<string, unknown>) => void; sequence: number }) {
-  const [client, setClient] = useState(''); const [item, setItem] = useState(''); const [grams, setGrams] = useState(180); const [hours, setHours] = useState(9.5); const [energyRate, setEnergyRate] = useState(.86); const [machineRate, setMachineRate] = useState(3.4); const [packaging, setPackaging] = useState(8); const [fees, setFees] = useState(8); const [margin, setMargin] = useState(35);
+  const [client, setClient] = useState(''); const [item, setItem] = useState(''); const [grams, setGrams] = useState(180); const [timeHours, setTimeHours] = useState(9); const [timeMinutes, setTimeMinutes] = useState(30); const [energyRate, setEnergyRate] = useState(defaultPricingDefaults.energyRate); const [machineRate, setMachineRate] = useState(defaultPricingDefaults.machineRate); const [packaging, setPackaging] = useState(defaultPricingDefaults.packaging); const [fees, setFees] = useState(defaultPricingDefaults.fees); const [margin, setMargin] = useState(defaultPricingDefaults.margin);
   const [quantity, setQuantity] = useState(1); const [customUnitPrice, setCustomUnitPrice] = useState<number | null>(null);
+  const hours = timeHours + timeMinutes / 60;
+  useEffect(() => {
+    if (!open) return;
+    void fetch('/api/settings')
+      .then(response => response.ok ? response.json() : Promise.reject())
+      .then((settings: PricingDefaults) => { setEnergyRate(settings.energyRate); setMachineRate(settings.machineRate); setPackaging(settings.packaging); setFees(settings.fees); setMargin(settings.margin); })
+      .catch(() => { setEnergyRate(defaultPricingDefaults.energyRate); setMachineRate(defaultPricingDefaults.machineRate); setPackaging(defaultPricingDefaults.packaging); setFees(defaultPricingDefaults.fees); setMargin(defaultPricingDefaults.margin); });
+  }, [open]);
   const calc = useMemo(() => { const material = grams * .095; const energy = hours * energyRate; const machine = hours * machineRate; const base = material + energy + machine + packaging; const feeValue = base * fees / 100; return { material, energy, machine, feeValue, total: (base + feeValue) / (1 - margin / 100) }; }, [grams, hours, energyRate, machineRate, packaging, fees, margin]);
-  const unitPrice = customUnitPrice ?? Number(calc.total.toFixed(2));
+  const unitPrice = customUnitPrice ?? Number((calc.total / Math.max(1, quantity)).toFixed(2));
   const finalTotal = quantity * unitPrice;
-  const submit = () => { if (!client.trim() || !item.trim() || quantity <= 0 || unitPrice <= 0) return; const id = `ORC-${sequence}`; onSave({ id, client, item, date: '29 ago', total: brl(finalTotal), status: 'Rascunho', quantity, unitPrice }, { id, client, item, grams, hours, energyRate, machineRate, packaging, fees, margin, quantity, unitPrice, total: finalTotal }); setClient(''); setItem(''); setQuantity(1); setCustomUnitPrice(null); };
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle className="text-lg">Novo orçamento</DialogTitle><DialogDescription>Informe a peça, a quantidade e o valor unitário. O total é atualizado automaticamente.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="Cliente *"><Input value={client} onChange={e => setClient(e.target.value)} placeholder="Nome do cliente"/></Field><Field label="Peça / trabalho *"><Input value={item} onChange={e => setItem(e.target.value)} placeholder="Ex.: Maquete residencial"/></Field><Field label="Quantidade *"><Input type="number" min="1" step="1" value={quantity} onChange={e => setQuantity(Math.max(1, Number(e.target.value)))}/></Field><Field label="Valor unitário (R$) *"><Input type="number" min="0" step=".01" value={unitPrice} onChange={e => setCustomUnitPrice(Math.max(0, Number(e.target.value)))}/></Field><Field label="Material por unidade (gramas)"><Input type="number" value={grams} onChange={e => setGrams(Number(e.target.value))}/></Field><Field label="Tempo por unidade (horas)"><Input type="number" step=".5" value={hours} onChange={e => setHours(Number(e.target.value))}/></Field><Field label="Energia (R$/kWh)"><Input type="number" step=".01" value={energyRate} onChange={e => setEnergyRate(Number(e.target.value))}/></Field><Field label="Depreciação da máquina (R$/h)"><Input type="number" step=".1" value={machineRate} onChange={e => setMachineRate(Number(e.target.value))}/></Field><Field label="Embalagem (R$)"><Input type="number" value={packaging} onChange={e => setPackaging(Number(e.target.value))}/></Field><Field label="Taxas / impostos (%)"><Input type="number" value={fees} onChange={e => setFees(Number(e.target.value))}/></Field><Field label="Margem de lucro (%)"><Input type="number" value={margin} onChange={e => setMargin(Number(e.target.value))}/></Field><Field label="Observações"><Textarea placeholder="Acabamento, cor, tolerâncias..."/></Field></div><div className="grid gap-2 rounded-xl bg-[var(--brand-blue)] p-4 text-xs text-white/80 sm:grid-cols-3"><span>Material/un.: <b className="text-white">{brl(calc.material)}</b></span><span>Energia/un.: <b className="text-white">{brl(calc.energy)}</b></span><span>Máquina/un.: <b className="text-white">{brl(calc.machine)}</b></span><span>Quantidade: <b className="text-white">{quantity}</b></span><span>Valor unitário: <b className="text-white">{brl(unitPrice)}</b></span><span className="text-sm text-white">Total: <b className="text-lg text-[#ff8358]">{brl(finalTotal)}</b></span></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!client.trim() || !item.trim() || quantity <= 0 || unitPrice <= 0} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">Salvar orçamento</Button></DialogFooter></DialogContent></Dialog>;
+  const submit = () => { if (!client.trim() || !item.trim() || quantity <= 0 || unitPrice <= 0) return; const id = `ORC-${sequence}`; onSave({ id, client, item, date: '29 ago', total: brl(finalTotal), status: 'Rascunho', quantity, unitPrice }, { id, client, item, grams, hours, timeHours, timeMinutes, energyRate, machineRate, packaging, fees, margin, quantity, unitPrice, total: finalTotal }); setClient(''); setItem(''); setQuantity(1); setCustomUnitPrice(null); };
+  const standardInputClass = 'bg-slate-50 text-slate-600';
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle className="text-lg">Novo orçamento</DialogTitle><DialogDescription>Informe a peça, a quantidade e o valor unitário. O total é atualizado automaticamente.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="Cliente *"><Input value={client} onChange={e => setClient(e.target.value)} placeholder="Nome do cliente"/></Field><Field label="Peça / trabalho *"><Input value={item} onChange={e => setItem(e.target.value)} placeholder="Ex.: Maquete residencial"/></Field><Field label="Quantidade *"><Input type="number" min="1" step="1" value={quantity} onChange={e => setQuantity(Math.max(1, Number(e.target.value)))}/></Field><Field label="Valor unitário (R$) *"><Input type="number" min="0" step=".01" value={unitPrice} onChange={e => setCustomUnitPrice(Math.max(0, Number(e.target.value)))}/></Field><Field label="Peso total (g)"><Input type="number" min="0" value={grams} onChange={e => { setGrams(Math.max(0, Number(e.target.value))); setCustomUnitPrice(null); }}/></Field><Field label="Tempo total"><div className="grid grid-cols-2 gap-2"><div className="relative"><Input aria-label="Horas totais" type="number" min="0" step="1" value={timeHours} onChange={e => { setTimeHours(Math.max(0, Number(e.target.value))); setCustomUnitPrice(null); }} className="pr-8"/><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase text-slate-400">h</span></div><div className="relative"><Input aria-label="Minutos totais" type="number" min="0" max="59" step="1" value={timeMinutes} onChange={e => { setTimeMinutes(Math.min(59, Math.max(0, Number(e.target.value)))); setCustomUnitPrice(null); }} className="pr-10"/><span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase text-slate-400">min</span></div></div></Field><Field label="Energia (R$/kWh)"><Input readOnly value={energyRate} className={standardInputClass}/></Field><Field label="Depreciação da máquina (R$/h)"><Input readOnly value={machineRate} className={standardInputClass}/></Field><Field label="Embalagem (R$)"><Input readOnly value={packaging} className={standardInputClass}/></Field><Field label="Taxas / impostos (%)"><Input readOnly value={fees} className={standardInputClass}/></Field><Field label="Margem de lucro (%)"><Input readOnly value={margin} className={standardInputClass}/></Field><Field label="Observações"><Textarea placeholder="Acabamento, cor, tolerâncias..."/></Field></div><p className="text-[11px] text-slate-500">Os campos em cinza seguem os padrões salvos em Configurações.</p><div className="grid gap-2 rounded-xl bg-[var(--brand-blue)] p-4 text-xs text-white/80 sm:grid-cols-3"><span>Material total: <b className="text-white">{brl(calc.material)}</b></span><span>Energia total: <b className="text-white">{brl(calc.energy)}</b></span><span>Máquina total: <b className="text-white">{brl(calc.machine)}</b></span><span>Quantidade: <b className="text-white">{quantity}</b></span><span>Valor unitário: <b className="text-white">{brl(unitPrice)}</b></span><span className="text-sm text-white">Total: <b className="text-lg text-[#ff8358]">{brl(finalTotal)}</b></span></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!client.trim() || !item.trim() || quantity <= 0 || unitPrice <= 0} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">Salvar orçamento</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function DataTable({ headers, rows }: { headers: string[]; rows: string[][] }) { return <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{headers.map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={`${row[0]}-${i}`} className="border-b last:border-0 hover:bg-slate-50/60">{row.map((cell, j) => <td key={j} className={`px-4 py-3 text-xs ${j === 0 ? 'font-semibold' : 'text-slate-600'}`}>{j === row.length - 1 ? <Badge variant="secondary" className="bg-blue-50 text-blue-700">{cell}</Badge> : cell}</td>)}</tr>)}</tbody></table></div>; }
 function AlertBox({ icon: Icon, title, detail, tone }: { icon: React.ElementType; title: string; detail: string; tone: string }) { return <div className="flex items-center gap-3 rounded-xl border bg-white p-4"><div className={`metric-icon metric-${tone}`}><Icon className="size-4"/></div><div><p className="text-xs font-bold">{title}</p><p className="text-[11px] text-slate-500">{detail}</p></div></div>; }
 function Summary({ label, value, color }: { label: string; value: string; color: string }) { return <div><p className="text-xs text-slate-500">{label}</p><p className={`text-xl font-bold ${color}`}>{value}</p></div>; }
-function Setting({ label, value }: { label: string; value: string }) { return <Field label={label}><Input defaultValue={value}/></Field>; }
+function PricingSetting({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <Field label={label}><Input type="number" min="0" step=".01" value={value} onChange={event => onChange(Number(event.target.value))}/></Field>; }
 function Field({ label, children, dark = false }: { label: string; children: React.ReactNode; dark?: boolean }) { return <label className={`text-xs font-medium ${dark ? 'text-slate-300' : 'text-slate-600'}`}>{label}<div className="mt-1">{children}</div></label>; }
 function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'AD'; }
 function firstName(name: string) { return name.trim().split(/\s+/)[0] || 'Administrador'; }
