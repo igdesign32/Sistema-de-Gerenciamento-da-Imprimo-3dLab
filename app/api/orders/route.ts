@@ -14,23 +14,31 @@ type StoredOrderItem = { inventory_item_id: string | null; quantity: number };
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(CASE WHEN oi.item_name LIKE 'Insumo: %' THEN 0 ELSE oi.quantity END), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'waiting_queue' THEN 'Aguardando fila' WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC`).all();
+  const result = await env.DB.prepare(`SELECT o.id, o.customer_id AS customerId, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(CASE WHEN oi.item_name LIKE 'Insumo: %' THEN 0 ELSE oi.quantity END), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'waiting_queue' THEN 'Aguardando fila' WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC`).all();
   return Response.json(result.results);
 }
 
 export async function PUT(request: Request) {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const body = await request.json() as { id?: string; status?: string };
+  const body = await request.json() as { id?: string; status?: string; customerId?: string };
   const id = String(body.id ?? '').trim();
   const statusMap: Record<string, string> = { 'Aguardando fila': 'waiting_queue', 'Em andamento': 'approved', Finalizado: 'delivered', Cancelado: 'cancelled' };
-  const storedStatus = statusMap[String(body.status ?? '')];
-  if (!id || !storedStatus) return Response.json({ error: 'Pedido ou status inválido' }, { status: 400 });
-
-  const result = await env.DB.prepare(`UPDATE orders SET status = ?, updated_at = unixepoch() WHERE id = ?`).bind(storedStatus, id).run();
-  if (!result.meta.changes) return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
-  await env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'status_updated', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, id, JSON.stringify({ status: body.status })).run();
-  return Response.json({ ok: true, id, status: body.status });
+  const storedStatus = body.status === undefined ? undefined : statusMap[String(body.status)];
+  const customerId = body.customerId === undefined ? undefined : String(body.customerId).trim();
+  if (!id || (storedStatus === undefined && customerId === undefined) || (body.status !== undefined && !storedStatus) || (body.customerId !== undefined && !customerId)) return Response.json({ error: 'Dados do pedido inválidos' }, { status: 400 });
+  const order = await env.DB.prepare(`SELECT id FROM orders WHERE id = ?`).bind(id).first();
+  if (!order) return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
+  if (customerId !== undefined) {
+    const customer = await env.DB.prepare(`SELECT id FROM customers WHERE id = ? AND active = 1`).bind(customerId).first();
+    if (!customer) return Response.json({ error: 'Cliente não encontrado' }, { status: 404 });
+  }
+  const statements = [];
+  if (storedStatus !== undefined) statements.push(env.DB.prepare(`UPDATE orders SET status = ?, updated_at = unixepoch() WHERE id = ?`).bind(storedStatus, id));
+  if (customerId !== undefined) statements.push(env.DB.prepare(`UPDATE orders SET customer_id = ?, updated_at = unixepoch() WHERE id = ?`).bind(customerId, id));
+  statements.push(env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'updated', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, id, JSON.stringify({ status: body.status, customerId })));
+  await env.DB.batch(statements);
+  return Response.json({ ok: true, id, status: body.status, customerId });
 }
 
 export async function DELETE(request: Request) {

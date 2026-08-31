@@ -245,10 +245,61 @@ function OrdersView() {
 
 function CustomersView() {
   const [customers, setCustomers] = useState<Array<Customer & { orders: number; lastOrder: string; total: number }>>([]);
+  const [orders, setOrders] = useState<Array<{ id: string; customerId: string | null; customer: string; items: string; quantity: number; total: number; status: string; createdAt: string }>>([]);
+  const [selectedOrders, setSelectedOrders] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  useEffect(() => { void fetch('/api/customers').then(response => response.ok ? response.json() : Promise.reject()).then(result => setCustomers(result as typeof customers)).catch(() => setCustomers([])).finally(() => setLoading(false)); }, []);
-  const rows = customers.map(customer => [customer.name, customer.phone || customer.email || 'Sem contato', String(customer.orders), customer.lastOrder, brl(customer.total), 'Ativo']);
-  return <ModuleShell title={`${customers.length} clientes cadastrados`} detail="Clientes e histórico das vendas registradas" action="Novo cliente"><DataTable headers={['Cliente','Contato','Pedidos','Último pedido','Faturamento','Situação']} rows={rows}/>{loading && <p className="p-6 text-center text-sm text-slate-400">Carregando clientes...</p>}</ModuleShell>;
+  const [saving, setSaving] = useState('');
+  const [error, setError] = useState('');
+  useEffect(() => {
+    void Promise.all([fetch('/api/customers'), fetch('/api/orders')]).then(async ([customerResponse, orderResponse]) => {
+      if (!customerResponse.ok || !orderResponse.ok) throw new Error('Não foi possível carregar clientes e pedidos');
+      setCustomers(await customerResponse.json() as typeof customers);
+      setOrders(await orderResponse.json() as typeof orders);
+    }).catch(() => { setCustomers([]); setOrders([]); setError('Não foi possível carregar clientes e pedidos.'); }).finally(() => setLoading(false));
+  }, []);
+  const statusClass = (status: string) => status === 'Finalizado' ? 'bg-emerald-100 text-emerald-800 ring-emerald-200' : status === 'Cancelado' ? 'bg-red-100 text-red-700 ring-red-200' : status === 'Aguardando fila' ? 'bg-blue-100 text-blue-700 ring-blue-200' : 'bg-amber-100 text-amber-800 ring-amber-200';
+  const selectedOrderFor = (customerId: string) => {
+    const selectedId = selectedOrders[customerId] || orders.find(order => order.customerId === customerId)?.id || '';
+    return orders.find(order => order.id === selectedId);
+  };
+  const linkOrder = async (customer: Customer, orderId: string) => {
+    if (!orderId) return;
+    const previousOrders = orders;
+    setSaving(`${customer.id}:link`);
+    setError('');
+    setOrders(current => current.map(order => order.id === orderId ? { ...order, customerId: customer.id, customer: customer.name } : order));
+    setSelectedOrders(current => {
+      const next = { ...current, [customer.id]: orderId };
+      Object.keys(next).forEach(id => { if (id !== customer.id && next[id] === orderId) delete next[id]; });
+      return next;
+    });
+    try {
+      const response = await fetch('/api/orders', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: orderId, customerId: customer.id }) });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível vincular o pedido.');
+    } catch (problem) {
+      setOrders(previousOrders);
+      setError(problem instanceof Error ? problem.message : 'Não foi possível vincular o pedido.');
+    } finally { setSaving(''); }
+  };
+  const updateOrderStatus = async (orderId: string, status: string) => {
+    const previous = orders.find(order => order.id === orderId)?.status ?? 'Aguardando fila';
+    setSaving(`${orderId}:status`);
+    setError('');
+    setOrders(current => current.map(order => order.id === orderId ? { ...order, status } : order));
+    try {
+      const response = await fetch('/api/orders', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: orderId, status }) });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível atualizar a situação.');
+    } catch (problem) {
+      setOrders(current => current.map(order => order.id === orderId ? { ...order, status: previous } : order));
+      setError(problem instanceof Error ? problem.message : 'Não foi possível atualizar a situação.');
+    } finally { setSaving(''); }
+  };
+  return <ModuleShell title={`${customers.length} clientes cadastrados`} detail="Clientes e pedidos vinculados" action="Novo cliente"><div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Cliente','Pedidos','Último pedido','Valor (R$)','Situação'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{customers.map(customer => {
+    const selectedOrder = selectedOrderFor(customer.id);
+    return <tr key={customer.id} className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-3 text-sm font-semibold">{customer.name}</td><td className="px-4 py-2"><select aria-label={`Pedido vinculado a ${customer.name}`} value={selectedOrder?.id ?? ''} disabled={saving === `${customer.id}:link`} onChange={event => void linkOrder(customer, event.target.value)} className="h-9 w-full min-w-64 rounded-lg border bg-white px-3 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-[#0068ff]/30"><option value="">Selecionar pedido...</option>{orders.map(order => <option key={order.id} value={order.id}>{order.id} · {order.items}</option>)}</select></td><td className="px-4 py-3 text-xs text-slate-600">{selectedOrder?.createdAt ?? 'Sem pedido'}</td><td className="px-4 py-3 text-xs font-semibold text-slate-700">{selectedOrder ? brl(selectedOrder.total) : brl(0)}</td><td className="px-4 py-2">{selectedOrder ? <select aria-label={`Situação do pedido ${selectedOrder.id}`} value={selectedOrder.status} disabled={saving === `${selectedOrder.id}:status`} onChange={event => void updateOrderStatus(selectedOrder.id, event.target.value)} className={`h-8 cursor-pointer rounded-full border-0 px-3 text-xs font-semibold outline-none ring-1 transition focus:ring-2 focus:ring-[#0068ff] disabled:cursor-wait disabled:opacity-60 ${statusClass(selectedOrder.status)}`}><option value="Aguardando fila">Aguardando fila</option><option value="Em andamento">Em andamento</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select> : <span className="text-xs text-slate-400">Sem situação</span>}</td></tr>;
+  })}</tbody></table></div>{loading && <p className="p-6 text-center text-sm text-slate-400">Carregando clientes...</p>}{!loading && !customers.length && <p className="p-6 text-center text-sm text-slate-400">Nenhum cliente cadastrado.</p>}{error && <p role="alert" className="border-t bg-red-50 px-4 py-3 text-xs font-medium text-red-700">{error}</p>}</ModuleShell>;
 }
 
 type FinishedPart = { id: string; sku: string; name: string; detail: string; stock: number; color: string; cost: number; price: number };
