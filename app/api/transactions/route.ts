@@ -63,3 +63,17 @@ export async function PUT(request: Request) {
   const saved = await env.DB.prepare(`${selectTransactions} WHERE id = ?`).bind(body.id).first<TransactionRow>();
   return Response.json(saved ? decode(saved) : { error: 'Receita não encontrada após atualizar.' }, { status: saved ? 200 : 500 });
 }
+
+export async function DELETE(request: Request) {
+  const user = await getChatGPTUser();
+  if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
+  const id = new URL(request.url).searchParams.get('id');
+  if (!id) return Response.json({ error: 'Lançamento não informado.' }, { status: 400 });
+  const before = await env.DB.prepare(`${selectTransactions} WHERE id = ?`).bind(id).first<TransactionRow>();
+  if (!before) return Response.json({ error: 'Lançamento não encontrado.' }, { status: 404 });
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM transactions WHERE id = ?`).bind(id),
+    env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, before_json, created_at) VALUES (?, ?, 'transaction', ?, 'deleted', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, id, JSON.stringify(before)),
+  ]);
+  return Response.json({ ok: true });
+}

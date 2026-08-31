@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, CalendarDays, CircleDollarSign, Pencil, Search, TrendingDown, TrendingUp, WalletCards } from 'lucide-react';
+import { BarChart3, CalendarDays, Check, CircleDollarSign, Pencil, Search, Trash2, TrendingDown, TrendingUp, WalletCards } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 
 type Period = 'today' | '7d' | '30d' | 'month' | 'year' | 'custom';
@@ -17,6 +18,7 @@ type InventoryPart = { id: string; sku: string; name: string; price: number };
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 const localDate = () => { const date = new Date(); date.setMinutes(date.getMinutes() - date.getTimezoneOffset()); return date.toISOString().slice(0, 10); };
 const fieldClass = 'h-10 w-full rounded-md border border-[#dfe5ee] bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#0068ff] focus:ring-2 focus:ring-[#0068ff]/15';
+const editFieldClass = 'h-10 w-full rounded-md border border-slate-600 bg-slate-700 px-3 text-sm text-white outline-none focus:border-[#ff6b35] focus:ring-2 focus:ring-[#ff6b35]/25';
 const categories = ['Vendas diversas', 'Peças acabadas', 'Serviço de impressão', 'Projeto personalizado', 'Outros'];
 const accounts = ['Conta Corrente', 'Dinheiro', 'Carteira Digital', 'Outros'];
 const paymentMethods = ['Pix', 'Dinheiro', 'Cartão', 'Transferência', 'Boleto', 'Venda Direta'];
@@ -37,6 +39,7 @@ export function FinanceView() {
   const [paymentFilter, setPaymentFilter] = useState('');
   const [accountFilter, setAccountFilter] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
   const [dueDate, setDueDate] = useState(localDate());
   const [inventoryItemId, setInventoryItemId] = useState('');
   const [product, setProduct] = useState('');
@@ -85,10 +88,10 @@ export function FinanceView() {
     const part = parts.find(item => item.id === id);
     if (part) { setProduct(`${part.sku} — ${part.name}`); setUnitValue(part.price); setCategory('Peças acabadas'); }
   };
-  const resetForm = () => { setEditingId(null); setInventoryItemId(''); setProduct(''); setQuantity(1); setUnitValue(0); setNotes(''); setDueDate(localDate()); };
+  const resetForm = () => { setEditingId(null); setEditOpen(false); setInventoryItemId(''); setProduct(''); setQuantity(1); setUnitValue(0); setNotes(''); setDueDate(localDate()); };
   const editTransaction = (item: FinanceTransaction) => {
     setEditingId(item.id); setDueDate(item.dueDate); setProduct(item.product); setCategory(item.category); setQuantity(item.quantity); setUnitValue(item.unitValue);
-    setAccount(item.account); setPaymentMethod(item.paymentMethod); setStatus(item.status); setNotes(item.notes); window.scrollTo({ top: 0, behavior: 'smooth' });
+    setAccount(item.account); setPaymentMethod(item.paymentMethod); setStatus(item.status); setNotes(item.notes); setEditOpen(true);
   };
   const saveRevenue = async () => {
     if (!product.trim() || quantity <= 0 || unitValue <= 0) { setNotice('Informe o produto, a quantidade e o valor da receita.'); return; }
@@ -101,6 +104,17 @@ export function FinanceView() {
       setNotice(editingId ? 'Receita atualizada com sucesso.' : 'Receita lançada com sucesso.'); resetForm();
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Não foi possível salvar a receita.'); }
     finally { setSaving(false); }
+  };
+  const deleteTransaction = async (item: FinanceTransaction) => {
+    if (!window.confirm(`Excluir a receita “${item.product}”? Esta ação não pode ser desfeita.`)) return;
+    try {
+      const response = await fetch(`/api/transactions?id=${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível excluir a receita.');
+      setTransactions(current => current.filter(transaction => transaction.id !== item.id));
+      if (editingId === item.id) resetForm();
+      setNotice('Receita excluída com sucesso.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Não foi possível excluir a receita.'); }
   };
 
   const periodLabel = period === 'today' ? 'Hoje' : period === '7d' ? 'Últimos 7 dias' : period === '30d' ? 'Últimos 30 dias' : period === 'month' ? 'Mês atual' : period === 'year' ? 'Ano atual' : `${customStart.split('-').reverse().join('/')} a ${customEnd.split('-').reverse().join('/')}`;
@@ -136,10 +150,22 @@ export function FinanceView() {
       </CardContent></Card>
       <Card className="min-w-0 border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader><CardTitle>Receitas lançadas</CardTitle><p className="text-xs text-slate-500">Tudo que entrou de dinheiro no período selecionado.</p></CardHeader><CardContent className="px-0">
         <div className="grid gap-2 border-y bg-slate-50 p-3 md:grid-cols-2 xl:grid-cols-5"><div className="relative xl:col-span-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"/><Input aria-label="Buscar receitas por produto" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar produto..." className="pl-9"/></div><FilterSelect value={categoryFilter} onChange={setCategoryFilter} first="Todas categorias" options={categories}/><FilterSelect value={statusFilter} onChange={setStatusFilter} first="Todos status" options={['Pago','Em aberto']}/><FilterSelect value={paymentFilter} onChange={setPaymentFilter} first="Todo pagamento" options={paymentMethods}/><FilterSelect value={accountFilter} onChange={setAccountFilter} first="Todas contas" options={accounts}/></div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-xs"><thead className="bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Data','Produto','Categoria','Qtd.','V. unit.','Total','Conta','Pagamento','Status','Ações'].map(item => <th key={item} className="px-3 py-3 font-semibold">{item}</th>)}</tr></thead><tbody>{revenueRows.map(item => <tr key={item.id} className="border-t hover:bg-slate-50"><td className="whitespace-nowrap px-3 py-3 font-medium">{item.dueDate.split('-').reverse().join('/')}</td><td className="max-w-52 px-3 py-3"><p className="font-semibold">{item.product}</p>{item.notes && <p className="mt-1 truncate text-[10px] text-slate-500">{item.notes}</p>}</td><td className="px-3 py-3"><span className="rounded-full border px-2 py-1 text-[10px]">{item.category}</span></td><td className="px-3 py-3">{item.quantity}</td><td className="px-3 py-3">{brl(item.unitValue)}</td><td className="px-3 py-3 font-bold text-emerald-600">{brl(item.amount)}</td><td className="px-3 py-3">{item.account}</td><td className="px-3 py-3">{item.paymentMethod}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${item.status === 'Pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{item.status}</span></td><td className="px-3 py-3"><Button variant="ghost" size="icon" aria-label={`Editar ${item.product}`} onClick={() => editTransaction(item)} className="text-[#0068ff]"><Pencil className="size-4"/></Button></td></tr>)}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-xs"><thead className="bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Data','Produto','Categoria','Qtd.','V. unit.','Total','Conta','Pagamento','Status','Ações'].map(item => <th key={item} className="px-3 py-3 font-semibold">{item}</th>)}</tr></thead><tbody>{revenueRows.map(item => <tr key={item.id} className="border-t hover:bg-slate-50"><td className="whitespace-nowrap px-3 py-3 font-medium">{item.dueDate.split('-').reverse().join('/')}</td><td className="max-w-52 px-3 py-3"><p className="font-semibold">{item.product}</p>{item.notes && <p className="mt-1 truncate text-[10px] text-slate-500">{item.notes}</p>}</td><td className="px-3 py-3"><span className="rounded-full border px-2 py-1 text-[10px]">{item.category}</span></td><td className="px-3 py-3">{item.quantity}</td><td className="px-3 py-3">{brl(item.unitValue)}</td><td className="px-3 py-3 font-bold text-emerald-600">{brl(item.amount)}</td><td className="px-3 py-3">{item.account}</td><td className="px-3 py-3">{item.paymentMethod}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${item.status === 'Pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{item.status}</span></td><td className="px-3 py-3"><div className="flex items-center gap-1"><Button variant="ghost" size="icon" aria-label={`Editar ${item.product}`} onClick={() => editTransaction(item)} className="text-[#0068ff]"><Pencil className="size-4"/></Button><Button variant="ghost" size="icon" aria-label={`Excluir ${item.product}`} onClick={() => void deleteTransaction(item)} className="text-red-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="size-4"/></Button></div></td></tr>)}</tbody></table></div>
         {loading && <p className="p-8 text-center text-sm text-slate-400">Carregando receitas...</p>}{!loading && revenueRows.length === 0 && <p className="p-8 text-center text-sm text-slate-400">Nenhuma receita encontrada neste período.</p>}
       </CardContent></Card>
     </div> : <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardContent className="p-10 text-center"><p className="font-semibold">{tabs.find(item => item[0] === tab)?.[2]}</p><p className="mt-2 text-sm text-slate-500">Esta área está preparada e será detalhada na próxima etapa.</p></CardContent></Card>}
+    <Dialog open={editOpen} onOpenChange={open => { setEditOpen(open); if (!open) resetForm(); }}><DialogContent className="max-h-[92vh] overflow-y-auto border-slate-700 bg-[#101a2c] text-white sm:max-w-xl"><DialogHeader><DialogTitle className="flex items-center gap-2 text-white"><Pencil className="size-5 text-[#ff6b35]"/> Editar Lançamento Financeiro</DialogTitle><DialogDescription className="text-slate-400">Revise os dados da receita e salve as alterações.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2">
+      <EditField label="Data" wide><Input type="date" value={dueDate} onChange={event => setDueDate(event.target.value)} className={editFieldClass}/></EditField>
+      <EditField label="Produto / origem" wide><Input value={product} onChange={event => setProduct(event.target.value)} className={editFieldClass}/></EditField>
+      <EditField label="Quantidade"><Input type="number" min="0.01" step="0.01" value={quantity} onChange={event => setQuantity(Math.max(.01, Number(event.target.value) || 0))} className={editFieldClass}/></EditField>
+      <EditField label="Valor unitário (R$)"><Input type="number" min="0" step="0.01" value={unitValue} onChange={event => setUnitValue(Math.max(0, Number(event.target.value) || 0))} className={editFieldClass}/></EditField>
+      <EditField label="Descrição" wide><Input value={notes} onChange={event => setNotes(event.target.value)} placeholder="Detalhes do lançamento..." className={editFieldClass}/></EditField>
+      <EditField label="Categoria"><select value={category} onChange={event => setCategory(event.target.value)} className={editFieldClass}>{categories.map(item => <option key={item}>{item}</option>)}</select></EditField>
+      <EditField label="Valor total (R$)"><Input value={brl(quantity * unitValue)} readOnly className={`${editFieldClass} cursor-not-allowed text-slate-300`}/></EditField>
+      <EditField label="Conta"><select value={account} onChange={event => setAccount(event.target.value)} className={editFieldClass}>{accounts.map(item => <option key={item}>{item}</option>)}</select></EditField>
+      <EditField label="Forma de pagamento"><select value={paymentMethod} onChange={event => setPaymentMethod(event.target.value)} className={editFieldClass}>{paymentMethods.map(item => <option key={item}>{item}</option>)}</select></EditField>
+      <EditField label="Status" wide><select value={status} onChange={event => setStatus(event.target.value)} className={editFieldClass}><option>Pago</option><option>Em aberto</option></select></EditField>
+    </div><DialogFooter className="border-t border-slate-700 pt-4 sm:justify-between"><Button variant="destructive" onClick={() => { const item = transactions.find(transaction => transaction.id === editingId); if (item) void deleteTransaction(item); }}><Trash2/> Excluir</Button><div className="flex gap-2"><Button variant="outline" onClick={resetForm} className="border-slate-600 bg-transparent text-white hover:bg-slate-800 hover:text-white">Cancelar</Button><Button onClick={() => void saveRevenue()} disabled={saving} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Check/> {saving ? 'Salvando...' : 'Salvar Alterações'}</Button></div></DialogFooter></DialogContent></Dialog>
     {notice && <output className={`block rounded-lg px-4 py-3 text-sm ${notice.includes('sucesso') ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{notice}</output>}
   </div>;
 }
@@ -149,4 +175,5 @@ function FinanceMetric({ icon: Icon, label, value, detail, tone }: { icon: React
   return <Card className={`border shadow-sm ${colors[tone]}`}><CardContent className="flex items-center justify-between p-5"><div><p className="text-[11px] font-bold uppercase tracking-wide">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p>{detail && <p className="mt-1 text-[10px] text-slate-500">{detail}</p>}</div><Icon className="size-8 opacity-60"/></CardContent></Card>;
 }
 function FinanceField({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block text-xs font-semibold text-slate-600"><span className="mb-1.5 block uppercase tracking-wide">{label}</span>{children}</label>; }
+function EditField({ label, children, wide = false }: { label: string; children: React.ReactNode; wide?: boolean }) { return <label className={`block text-xs font-semibold uppercase tracking-wide text-slate-300 ${wide ? 'sm:col-span-2' : ''}`}><span className="mb-1.5 block">{label}</span>{children}</label>; }
 function FilterSelect({ value, onChange, first, options }: { value: string; onChange: (value: string) => void; first: string; options: string[] }) { return <select value={value} onChange={event => onChange(event.target.value)} className={fieldClass}><option value="">{first}</option>{options.map(item => <option key={item}>{item}</option>)}</select>; }
