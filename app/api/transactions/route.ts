@@ -27,7 +27,7 @@ function validate(body: TransactionInput) {
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`${selectTransactions} ORDER BY due_at DESC, created_at DESC LIMIT 250`).all<TransactionRow>();
+  const result = await env.DB.prepare(`${selectTransactions} ORDER BY due_at DESC, created_at DESC`).all<TransactionRow>();
   return Response.json(result.results.map(decode));
 }
 
