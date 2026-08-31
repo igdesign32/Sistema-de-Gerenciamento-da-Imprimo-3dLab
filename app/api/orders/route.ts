@@ -13,7 +13,7 @@ type StoredQuote = { id: string; customer_name: string; item_name: string; total
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(oi.quantity), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`).all();
+  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(oi.quantity), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'waiting_queue' THEN 'Aguardando fila' WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`).all();
   return Response.json(result.results);
 }
 
@@ -22,7 +22,7 @@ export async function PUT(request: Request) {
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
   const body = await request.json() as { id?: string; status?: string };
   const id = String(body.id ?? '').trim();
-  const statusMap: Record<string, string> = { 'Em andamento': 'approved', Finalizado: 'delivered', Cancelado: 'cancelled' };
+  const statusMap: Record<string, string> = { 'Aguardando fila': 'waiting_queue', 'Em andamento': 'approved', Finalizado: 'delivered', Cancelado: 'cancelled' };
   const storedStatus = statusMap[String(body.status ?? '')];
   if (!id || !storedStatus) return Response.json({ error: 'Pedido ou status inválido' }, { status: 400 });
 
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     const estimatedProfit = totalPrice - totalCost;
     const unitPrice = Number(body.quote.unitPrice) > 0 ? Number(body.quote.unitPrice) : totalPrice / quantity;
     await env.DB.batch([
-      env.DB.prepare(`INSERT INTO orders (id, quote_id, status, total_price, total_cost, estimated_profit, notes, created_at, updated_at) VALUES (?, ?, 'approved', ?, ?, ?, ?, unixepoch(), unixepoch())`).bind(orderId, quoteId, totalPrice, totalCost, estimatedProfit, `Convertido do orçamento ${quoteId}`),
+      env.DB.prepare(`INSERT INTO orders (id, quote_id, status, total_price, total_cost, estimated_profit, notes, created_at, updated_at) VALUES (?, ?, 'waiting_queue', ?, ?, ?, ?, unixepoch(), unixepoch())`).bind(orderId, quoteId, totalPrice, totalCost, estimatedProfit, `Convertido do orçamento ${quoteId}`),
       env.DB.prepare(`INSERT INTO order_items (id, order_id, inventory_item_id, item_name, quantity, unit_cost, unit_price, subtotal, created_at, updated_at) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, unixepoch(), unixepoch())`).bind(crypto.randomUUID(), orderId, quote.item_name, quantity, totalCost / quantity, unitPrice, totalPrice),
       env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'created_from_quote', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, orderId, JSON.stringify({ quoteId, quantity, totalPrice, totalCost, estimatedProfit })),
     ]);
