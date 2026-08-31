@@ -256,6 +256,7 @@ type CartSupply = { supplyId: string; name: string; quantity: number; unit: stri
 type CartItem = { partId: string; quantity: number; unitPrice: number; supplies?: CartSupply[] };
 type Customer = { id: string; name: string; phone: string; email: string };
 type Supply = { id: string; name: string; type: string; quantity: number; unit: string; unitCost: number; supplier: string };
+type SupplySaveInput = Supply & { restockQuantity?: number };
 
 function FinishedParts() {
   const [inventorySection, setInventorySection] = useState<'parts' | 'supplies'>('parts');
@@ -396,14 +397,14 @@ function SuppliesView({ onSelectParts }: { onSelectParts: () => void }) {
   }, []);
   const openNew = () => { setEditing(null); setDialogOpen(true); };
   const openEdit = (supply: Supply) => { setEditing(supply); setDialogOpen(true); };
-  const saveSupply = async (supply: Supply) => {
+  const saveSupply = async (supply: SupplySaveInput) => {
     try {
       const response = await fetch('/api/supplies', { method: editing ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(supply) });
       const result = await response.json() as Supply & { error?: string };
       if (!response.ok) throw new Error(result.error || 'Não foi possível salvar o insumo');
       setSupplies(current => (editing ? current.map(item => item.id === result.id ? result : item) : [result, ...current]).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
       setDialogOpen(false);
-      setNotice('Insumo salvo permanentemente no banco de dados.');
+      setNotice(supply.restockQuantity ? `Reposição registrada: +${supply.restockQuantity} ${result.unit} em ${result.name}.` : 'Insumo salvo permanentemente no banco de dados.');
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Não foi possível salvar o insumo.'); }
   };
   const deleteSupply = async (supply: Supply) => {
@@ -432,15 +433,17 @@ function SuppliesView({ onSelectParts }: { onSelectParts: () => void }) {
   </div>;
 }
 
-function SupplyDialog({ open, onOpenChange, initial, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; initial: Supply | null; onSave: (supply: Supply) => void }) {
+function SupplyDialog({ open, onOpenChange, initial, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; initial: Supply | null; onSave: (supply: SupplySaveInput) => void }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [type, setType] = useState(initial?.type ?? 'Outro');
   const [quantity, setQuantity] = useState(initial?.quantity ?? 0);
   const [unit, setUnit] = useState(initial?.unit ?? 'un');
   const [unitCost, setUnitCost] = useState(initial?.unitCost ?? 0);
   const [supplier, setSupplier] = useState(initial?.supplier ?? '');
-  const submit = () => onSave({ id: initial?.id ?? '', name: name.trim(), type: type.trim() || 'Outro', quantity, unit: unit.trim() || 'un', unitCost, supplier: supplier.trim() });
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{initial ? 'Editar insumo' : 'Novo insumo'}</DialogTitle><DialogDescription>Cadastre materiais extras usados na montagem e entrega dos produtos.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="Nome do insumo *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Argola Italiana"/></Field><Field label="Tipo"><Input value={type} onChange={event => setType(event.target.value)} placeholder="Ex.: Embalagem, chaveiro ou outro"/></Field><Field label="Quantidade em estoque"><Input type="number" min="0" step=".01" value={quantity} onChange={event => setQuantity(Math.max(0, Number(event.target.value)))}/></Field><Field label="Unidade"><Input value={unit} onChange={event => setUnit(event.target.value)} placeholder="un, m, kg, ml..."/></Field><Field label="Custo unitário (R$)"><Input type="number" min="0" step=".01" value={unitCost} onChange={event => setUnitCost(Math.max(0, Number(event.target.value)))}/></Field><Field label="Fornecedor"><Input value={supplier} onChange={event => setSupplier(event.target.value)} placeholder="Ex.: Shopee"/></Field></div><div className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800">Valor atual em estoque: <b>{brl(quantity * unitCost)}</b></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!name.trim()} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{initial ? 'Salvar alterações' : 'Adicionar insumo'}</Button></DialogFooter></DialogContent></Dialog>;
+  const [restocking, setRestocking] = useState(false);
+  const [restockQuantity, setRestockQuantity] = useState(0);
+  const submit = () => onSave({ id: initial?.id ?? '', name: name.trim(), type: type.trim() || 'Outro', quantity, unit: unit.trim() || 'un', unitCost, supplier: supplier.trim(), restockQuantity: restocking ? restockQuantity : undefined });
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{initial ? 'Editar insumo' : 'Novo insumo'}</DialogTitle><DialogDescription>Cadastre materiais extras usados na montagem e entrega dos produtos.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="Nome do insumo *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Argola Italiana"/></Field><Field label="Tipo"><Input value={type} onChange={event => setType(event.target.value)} placeholder="Ex.: Embalagem, chaveiro ou outro"/></Field><Field label="Quantidade em estoque"><Input type="number" min="0" step=".01" value={quantity} onChange={event => setQuantity(Math.max(0, Number(event.target.value)))}/></Field><Field label="Unidade"><Input value={unit} onChange={event => setUnit(event.target.value)} placeholder="un, m, kg, ml..."/></Field><Field label="Custo unitário (R$)"><Input type="number" min="0" step=".01" value={unitCost} onChange={event => setUnitCost(Math.max(0, Number(event.target.value)))}/></Field><Field label="Fornecedor"><Input value={supplier} onChange={event => setSupplier(event.target.value)} placeholder="Ex.: Shopee"/></Field></div>{restocking && initial && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><Field label={`Quantidade para reposição (${unit || 'un'})`}><Input autoFocus type="number" min="0" step=".01" value={restockQuantity} onChange={event => setRestockQuantity(Math.max(0, Number(event.target.value)))}/></Field><div className="mt-2 flex justify-between text-xs text-emerald-800"><span>Estoque atual: <b>{initial.quantity} {unit}</b></span><span>Após salvar: <b>{initial.quantity + restockQuantity} {unit}</b></span></div></div>}<div className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800">Valor atual em estoque: <b>{brl((restocking && initial ? initial.quantity + restockQuantity : quantity) * unitCost)}</b></div><DialogFooter>{initial && <Button variant="outline" onClick={() => { setRestocking(current => !current); setRestockQuantity(0); }}>{restocking ? 'Cancelar reposição' : 'Reposição'}</Button>}<Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!name.trim() || (restocking && restockQuantity <= 0)} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{restocking ? 'Salvar reposição' : initial ? 'Salvar alterações' : 'Adicionar insumo'}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, onPrint, assignedCustomer, finalizing }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; onPrint: () => void; assignedCustomer: Customer | null; finalizing: boolean }) {

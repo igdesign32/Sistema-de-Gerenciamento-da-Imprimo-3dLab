@@ -9,6 +9,7 @@ type SupplyInput = {
   unit?: string;
   unitCost?: number;
   supplier?: string;
+  restockQuantity?: number;
 };
 
 const supplySelect = `SELECT id, name, COALESCE(material_type, 'Outro') AS type, quantity, unit, unit_cost AS unitCost, COALESCE(brand, '') AS supplier FROM inventory_items WHERE category IN ('other', 'packaging') AND active = 1`;
@@ -62,11 +63,16 @@ export async function PUT(request: Request) {
     unitCost: Math.max(0, Number(body.unitCost) || 0),
     supplier: body.supplier?.trim() || '',
   };
+  const restockQuantity = Math.max(0, Number(body.restockQuantity) || 0);
+  const action = restockQuantity > 0 ? 'restocked' : 'updated';
   await env.DB.batch([
-    env.DB.prepare(`UPDATE inventory_items SET name = ?, category = ?, material_type = ?, brand = ?, unit = ?, quantity = ?, unit_cost = ?, updated_at = unixepoch() WHERE id = ? AND category IN ('other', 'packaging') AND active = 1`).bind(saved.name, categoryFor(saved.type), saved.type, saved.supplier, saved.unit, saved.quantity, saved.unitCost, saved.id),
-    env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, before_json, after_json, created_at) VALUES (?, ?, 'inventory_item', ?, 'updated', ?, ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, saved.id, JSON.stringify(before), JSON.stringify(saved)),
+    restockQuantity > 0
+      ? env.DB.prepare(`UPDATE inventory_items SET name = ?, category = ?, material_type = ?, brand = ?, unit = ?, quantity = quantity + ?, unit_cost = ?, updated_at = unixepoch() WHERE id = ? AND category IN ('other', 'packaging') AND active = 1`).bind(saved.name, categoryFor(saved.type), saved.type, saved.supplier, saved.unit, restockQuantity, saved.unitCost, saved.id)
+      : env.DB.prepare(`UPDATE inventory_items SET name = ?, category = ?, material_type = ?, brand = ?, unit = ?, quantity = ?, unit_cost = ?, updated_at = unixepoch() WHERE id = ? AND category IN ('other', 'packaging') AND active = 1`).bind(saved.name, categoryFor(saved.type), saved.type, saved.supplier, saved.unit, saved.quantity, saved.unitCost, saved.id),
+    env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, before_json, after_json, created_at) VALUES (?, ?, 'inventory_item', ?, ?, ?, ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, saved.id, action, JSON.stringify(before), JSON.stringify({ ...saved, restockQuantity })),
   ]);
-  return Response.json(saved);
+  const result = await env.DB.prepare(`${supplySelect} AND id = ?`).bind(saved.id).first();
+  return Response.json(result ?? saved);
 }
 
 export async function DELETE(request: Request) {
