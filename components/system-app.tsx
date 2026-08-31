@@ -118,11 +118,34 @@ function Sidebar({ view, menu, onClose, onSelect, user, signOutPath }: { view: V
 
 function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; userName: string }) {
   const jobs = [{ name: 'Bambu Lab X1C', detail: 'Maquete • peças 8/14', value: 64 }, { name: 'Creality K1 Max', detail: 'Engrenagem técnica', value: 82 }, { name: 'Elegoo Saturn 3', detail: 'Modelo anatômico', value: 18 }];
+  const [transactions, setTransactions] = useState<Array<{ type: 'Receita' | 'Despesa'; amount: number; dueDate: string }>>([]);
+  useEffect(() => {
+    void fetch('/api/transactions').then(async response => {
+      if (!response.ok) throw new Error('Não foi possível carregar o resumo financeiro.');
+      return await response.json() as Array<{ type: 'Receita' | 'Despesa'; amount: number; dueDate: string }>;
+    }).then(setTransactions).catch(() => setTransactions([]));
+  }, []);
+  const finance = useMemo(() => {
+    const now = new Date(); now.setHours(23, 59, 59, 999);
+    const lastThirtyDays = new Date(now); lastThirtyDays.setDate(lastThirtyDays.getDate() - 29); lastThirtyDays.setHours(0, 0, 0, 0);
+    const yearStart = new Date(now.getFullYear(), 0, 1);
+    const inRange = (transaction: { dueDate: string }, start: Date) => { const date = new Date(`${transaction.dueDate}T12:00:00`); return date >= start && date <= now; };
+    const recent = transactions.filter(transaction => inRange(transaction, lastThirtyDays));
+    const revenue = recent.filter(transaction => transaction.type === 'Receita').reduce((sum, transaction) => sum + transaction.amount, 0);
+    const expenses = recent.filter(transaction => transaction.type === 'Despesa').reduce((sum, transaction) => sum + transaction.amount, 0);
+    const annualRevenue = transactions.filter(transaction => transaction.type === 'Receita' && inRange(transaction, yearStart)).reduce((sum, transaction) => sum + transaction.amount, 0);
+    const netProfit = revenue - expenses;
+    return { revenue, annualRevenue, netProfit, margin: revenue > 0 ? netProfit / revenue * 100 : 0 };
+  }, [transactions]);
+  const metrics: Array<[React.ElementType, string, string, string, string]> = [
+    [HandCoins, 'Faturamento total', brl(finance.revenue), 'Últimos 30 dias · Financeiro', 'green'],
+    [ShoppingBag, 'Pedidos ativos', '12', '4 entregas nesta semana', 'blue'],
+    [WalletCards, 'Faturamento total anual', brl(finance.annualRevenue), `Ano de ${new Date().getFullYear()}`, 'orange'],
+    [TrendingUp, 'Lucro líquido', brl(finance.netProfit), `${finance.margin.toFixed(1)}% de margem · últimos 30 dias`, 'violet'],
+  ];
   return <>
     <div className="mb-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><p className="text-sm text-slate-500">Olá, {firstName(userName)}.</p><h2 className="text-2xl font-bold tracking-[-.025em]">Sua produção está no ritmo certo.</h2></div><span className="text-xs text-slate-500">● Atualizado agora</span></div>
-    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
-      [HandCoins, 'Faturamento no mês', 'R$ 18.740', '+12,4%', 'green'], [ShoppingBag, 'Pedidos ativos', '12', '4 entregas nesta semana', 'blue'], [Factory, 'Máquinas em uso', '3 de 5', '60% da capacidade', 'orange'], [TrendingUp, 'Lucro estimado', 'R$ 6.920', '36,9% de margem', 'violet'],
-    ].map(([Icon, label, value, detail, color]) => <Card key={String(label)} className="gap-3 border-0 bg-white py-4 shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between px-4"><CardTitle className="text-xs text-slate-500">{label}</CardTitle><div className={`metric-icon metric-${color}`}><Icon className="size-4" /></div></CardHeader><CardContent className="px-4"><p className="text-2xl font-bold">{value}</p><p className="mt-1 text-[11px] text-slate-500">{detail}</p></CardContent></Card>)}</section>
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([Icon, label, value, detail, color]) => <Card key={label} className="gap-3 border-0 bg-white py-4 shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between px-4"><CardTitle className="text-xs text-slate-500">{label}</CardTitle><div className={`metric-icon metric-${color}`}><Icon className="size-4" /></div></CardHeader><CardContent className="px-4"><p className="text-2xl font-bold">{value}</p><p className="mt-1 text-[11px] text-slate-500">{detail}</p></CardContent></Card>)}</section>
     <div className="mt-5">
       <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between border-b"><div><CardTitle>Pedidos recentes</CardTitle><p className="text-xs text-slate-500">Prazos e andamento da operação</p></div><Button variant="ghost" onClick={() => onNavigate('Pedidos')} className="text-[#e65d2c]">Ver todos</Button></CardHeader><CardContent className="overflow-x-auto px-0"><DataTable headers={['Pedido / cliente', 'Trabalho', 'Prazo', 'Valor', 'Status']} rows={[
         ['#1048 · Lumina Arquitetura', 'Maquete residencial', 'Hoje, 16:00', 'R$ 1.480,00', 'Em produção'], ['#1047 · Studio Objeto', 'Kit 12 expositores', 'Amanhã', 'R$ 864,00', 'Aguardando'], ['#1046 · Rafael Martins', 'Engrenagem técnica', '30 ago', 'R$ 295,00', 'Acabamento'], ['#1045 · Clínica Orto+', 'Modelo anatômico', '02 set', 'R$ 720,00', 'Aprovado'],
