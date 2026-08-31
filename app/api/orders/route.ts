@@ -9,11 +9,12 @@ type OrderInput = {
 
 type StoredPart = { id: string; name: string; quantity: number; unit_cost: number };
 type StoredQuote = { id: string; customer_name: string; item_name: string; total_price: number; total_cost: number };
+type StoredOrderItem = { inventory_item_id: string | null; quantity: number };
 
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(oi.quantity), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'waiting_queue' THEN 'Aguardando fila' WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 100`).all();
+  const result = await env.DB.prepare(`SELECT o.id, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(oi.quantity), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'waiting_queue' THEN 'Aguardando fila' WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC`).all();
   return Response.json(result.results);
 }
 
@@ -30,6 +31,27 @@ export async function PUT(request: Request) {
   if (!result.meta.changes) return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
   await env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'status_updated', ?, unixepoch())`).bind(crypto.randomUUID(), user.userId, id, JSON.stringify({ status: body.status })).run();
   return Response.json({ ok: true, id, status: body.status });
+}
+
+export async function DELETE(request: Request) {
+  const user = await getChatGPTUser();
+  if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
+  const id = new URL(request.url).searchParams.get('id')?.trim();
+  if (!id) return Response.json({ error: 'Pedido não informado' }, { status: 400 });
+  const order = await env.DB.prepare(`SELECT id FROM orders WHERE id = ?`).bind(id).first<{ id: string }>();
+  if (!order) return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
+
+  const items = await env.DB.prepare(`SELECT inventory_item_id, quantity FROM order_items WHERE order_id = ?`).bind(id).all<StoredOrderItem>();
+  const statements = items.results.filter(item => item.inventory_item_id).map(item => env.DB.prepare(`UPDATE inventory_items SET quantity = quantity + ?, updated_at = unixepoch() WHERE id = ?`).bind(Number(item.quantity), item.inventory_item_id));
+  statements.push(
+    env.DB.prepare(`DELETE FROM transactions WHERE order_id = ?`).bind(id),
+    env.DB.prepare(`DELETE FROM production_jobs WHERE order_id = ?`).bind(id),
+    env.DB.prepare(`DELETE FROM order_items WHERE order_id = ?`).bind(id),
+    env.DB.prepare(`DELETE FROM orders WHERE id = ?`).bind(id),
+    env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'deleted', '{}', unixepoch())`).bind(crypto.randomUUID(), user.userId, id),
+  );
+  await env.DB.batch(statements);
+  return Response.json({ ok: true, id });
 }
 
 export async function POST(request: Request) {

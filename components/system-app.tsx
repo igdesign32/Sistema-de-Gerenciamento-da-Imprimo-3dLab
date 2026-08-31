@@ -197,8 +197,17 @@ function OrdersView() {
   const [orders, setOrders] = useState<Array<{ id: string; customer: string; items: string; quantity: number; total: number; status: string; createdAt: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState('');
+  const [deletingId, setDeletingId] = useState('');
   const [error, setError] = useState('');
+  const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   useEffect(() => { void fetch('/api/orders').then(response => response.ok ? response.json() : Promise.reject()).then(result => setOrders(result as typeof orders)).catch(() => setOrders([])).finally(() => setLoading(false)); }, []);
+  const orderMonth = (date: string) => { const [, month, year] = date.split('/'); return year && month ? `${year}-${month}` : currentMonth; };
+  const monthLabel = (key: string) => { const [year, month] = key.split('-').map(Number); const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1)); return label.charAt(0).toUpperCase() + label.slice(1); };
+  const availableMonths = Array.from(new Set([currentMonth, ...orders.map(order => orderMonth(order.createdAt))])).sort((a, b) => b.localeCompare(a));
+  const activeStatuses = ['Aguardando fila', 'Em andamento'];
+  const visibleOrders = orders.filter(order => orderMonth(order.createdAt) === selectedMonth || (selectedMonth === currentMonth && orderMonth(order.createdAt) < currentMonth && activeStatuses.includes(order.status)));
+  const carriedOrders = visibleOrders.filter(order => orderMonth(order.createdAt) !== selectedMonth).length;
   const statusClass = (status: string) => status === 'Finalizado' ? 'bg-emerald-100 text-emerald-800 ring-emerald-200' : status === 'Cancelado' ? 'bg-red-100 text-red-700 ring-red-200' : status === 'Aguardando fila' ? 'bg-blue-100 text-blue-700 ring-blue-200' : 'bg-amber-100 text-amber-800 ring-amber-200';
   const updateStatus = async (orderId: string, status: string) => {
     const previous = orders.find(order => order.id === orderId)?.status ?? 'Aguardando fila';
@@ -216,9 +225,25 @@ function OrdersView() {
       setSavingId('');
     }
   };
-  return <ModuleShell title={`${orders.length} pedidos salvos`} detail="Acompanhe e atualize o andamento dos pedidos" action="Novo pedido">
-    <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Pedido','Cliente','Itens','Criado em','Valor','Status'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{orders.map(order => <tr key={order.id} className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{order.id}</td><td className="px-4 py-3 text-xs text-slate-600">{order.customer}</td><td className="px-4 py-3 text-xs text-slate-600">{order.items} · {order.quantity} un.</td><td className="px-4 py-3 text-xs text-slate-600">{order.createdAt}</td><td className="px-4 py-3 text-xs text-slate-600">{brl(order.total)}</td><td className="px-4 py-2"><select aria-label={`Status do pedido ${order.id}`} value={order.status} disabled={savingId === order.id} onChange={event => void updateStatus(order.id, event.target.value)} className={`h-8 cursor-pointer rounded-full border-0 px-3 text-xs font-semibold outline-none ring-1 transition focus:ring-2 focus:ring-[#0068ff] disabled:cursor-wait disabled:opacity-60 ${statusClass(order.status)}`}><option value="Aguardando fila">Aguardando fila</option><option value="Em andamento">Em andamento</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select></td></tr>)}</tbody></table></div>
-    {loading && <p className="p-6 text-center text-sm text-slate-400">Carregando pedidos...</p>}{!loading && !orders.length && <p className="p-6 text-center text-sm text-slate-400">Nenhum pedido salvo.</p>}{error && <p role="alert" className="border-t bg-red-50 px-4 py-3 text-xs font-medium text-red-700">{error}</p>}
+  const deleteOrder = async (orderId: string) => {
+    if (!window.confirm('Apagar este pedido? Os lançamentos financeiros ligados a ele também serão removidos.')) return;
+    setDeletingId(orderId);
+    setError('');
+    try {
+      const response = await fetch(`/api/orders?id=${encodeURIComponent(orderId)}`, { method: 'DELETE' });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível apagar o pedido.');
+      setOrders(current => current.filter(order => order.id !== orderId));
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'Não foi possível apagar o pedido.');
+    } finally {
+      setDeletingId('');
+    }
+  };
+  return <ModuleShell title={`${visibleOrders.length} pedidos em ${monthLabel(selectedMonth)}`} detail="Pedidos ativos continuam no mês seguinte até serem concluídos" action="Novo pedido">
+    <div className="flex flex-col gap-2 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div><label htmlFor="orders-month" className="text-xs font-semibold text-slate-600">Visualizar mês</label>{carriedOrders > 0 && <p className="text-[11px] text-blue-600">Inclui {carriedOrders} {carriedOrders === 1 ? 'pedido ativo de mês anterior' : 'pedidos ativos de meses anteriores'}.</p>}</div><select id="orders-month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} className="h-9 rounded-lg border bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-[#0068ff]/30">{availableMonths.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}</select></div>
+    <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Pedido','Cliente','Itens','Criado em','Valor','Status','Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{visibleOrders.map(order => <tr key={order.id} className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{order.id}</td><td className="px-4 py-3 text-xs text-slate-600">{order.customer}</td><td className="px-4 py-3 text-xs text-slate-600">{order.items} · {order.quantity} un.</td><td className="px-4 py-3 text-xs text-slate-600">{order.createdAt}</td><td className="px-4 py-3 text-xs text-slate-600">{brl(order.total)}</td><td className="px-4 py-2"><select aria-label={`Status do pedido ${order.id}`} value={order.status} disabled={savingId === order.id} onChange={event => void updateStatus(order.id, event.target.value)} className={`h-8 cursor-pointer rounded-full border-0 px-3 text-xs font-semibold outline-none ring-1 transition focus:ring-2 focus:ring-[#0068ff] disabled:cursor-wait disabled:opacity-60 ${statusClass(order.status)}`}><option value="Aguardando fila">Aguardando fila</option><option value="Em andamento">Em andamento</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select></td><td className="px-4 py-2"><Button onClick={() => void deleteOrder(order.id)} disabled={deletingId === order.id} variant="ghost" size="icon" aria-label={`Apagar pedido ${order.id}`} title="Apagar pedido" className="text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2/></Button></td></tr>)}</tbody></table></div>
+    {loading && <p className="p-6 text-center text-sm text-slate-400">Carregando pedidos...</p>}{!loading && !visibleOrders.length && <p className="p-6 text-center text-sm text-slate-400">Nenhum pedido neste mês.</p>}{error && <p role="alert" className="border-t bg-red-50 px-4 py-3 text-xs font-medium text-red-700">{error}</p>}
   </ModuleShell>;
 }
 
