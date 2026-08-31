@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { CalculatorView, type CalculatorQuote } from '@/components/calculator-view';
+import { FinanceView } from '@/components/finance-view';
 
 type View = 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Pedidos' | 'Produção' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
 type Quote = { id: string; client: string; item: string; date: string; total: string; status: string; quantity?: number; unitPrice?: number };
@@ -136,16 +137,6 @@ function CustomersView() {
   useEffect(() => { void fetch('/api/customers').then(response => response.ok ? response.json() : Promise.reject()).then(result => setCustomers(result as typeof customers)).catch(() => setCustomers([])).finally(() => setLoading(false)); }, []);
   const rows = customers.map(customer => [customer.name, customer.phone || customer.email || 'Sem contato', String(customer.orders), customer.lastOrder, brl(customer.total), 'Ativo']);
   return <ModuleShell title={`${customers.length} clientes cadastrados`} detail="Clientes e histórico das vendas registradas" action="Novo cliente"><DataTable headers={['Cliente','Contato','Pedidos','Último pedido','Faturamento','Situação']} rows={rows}/>{loading && <p className="p-6 text-center text-sm text-slate-400">Carregando clientes...</p>}</ModuleShell>;
-}
-
-function FinanceView() {
-  const [transactions, setTransactions] = useState<Array<{ id: string; orderId: string; type: string; category: string; description: string; amount: number; paymentMethod: string; status: string; dueAt: string }>>([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => { void fetch('/api/transactions').then(response => response.ok ? response.json() : Promise.reject()).then(result => setTransactions(result as typeof transactions)).catch(() => setTransactions([])).finally(() => setLoading(false)); }, []);
-  const income = transactions.filter(item => item.type === 'Receita').reduce((total, item) => total + item.amount, 0);
-  const expenses = transactions.filter(item => item.type === 'Despesa').reduce((total, item) => total + item.amount, 0);
-  const rows = transactions.map(item => [item.orderId, item.category, item.dueAt, item.paymentMethod, brl(item.amount), item.status]);
-  return <ModuleShell title="Financeiro das vendas" detail="Receitas geradas pelos pedidos finalizados" action="Novo lançamento"><DataTable headers={['Pedido','Categoria','Data','Forma','Valor','Situação']} rows={rows}/>{loading && <p className="p-6 text-center text-sm text-slate-400">Carregando lançamentos...</p>}<div className="grid gap-4 border-t bg-slate-50 p-4 sm:grid-cols-3"><Summary label="Receitas" value={brl(income)} color="text-emerald-600"/><Summary label="Despesas" value={brl(expenses)} color="text-red-600"/><Summary label="Resultado" value={brl(income - expenses)} color="text-blue-600"/></div></ModuleShell>;
 }
 
 type FinishedPart = { id: string; sku: string; name: string; detail: string; stock: number; color: string; cost: number; price: number };
