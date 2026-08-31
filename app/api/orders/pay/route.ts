@@ -39,3 +39,17 @@ export async function POST(request: Request) {
 
   return Response.json({ ok: true, id, total, cost, profit: total - cost, paid: true });
 }
+
+export async function DELETE(request: Request) {
+  const user = await getChatGPTUser();
+  if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
+  const id = new URL(request.url).searchParams.get('id')?.trim();
+  if (!id) return Response.json({ error: 'Pedido não informado' }, { status: 400 });
+  const order = await env.DB.prepare(`SELECT id FROM orders WHERE id = ?`).bind(id).first<{ id: string }>();
+  if (!order) return Response.json({ error: 'Pedido não encontrado' }, { status: 404 });
+  await env.DB.batch([
+    env.DB.prepare(`DELETE FROM transactions WHERE order_id = ?`).bind(id),
+    env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'order', ?, 'payment_reversed', '{}', unixepoch())`).bind(crypto.randomUUID(), user.userId, id),
+  ]);
+  return Response.json({ ok: true, id, paid: false });
+}
