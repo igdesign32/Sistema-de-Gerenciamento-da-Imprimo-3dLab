@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Boxes, Calculator, CheckCircle2, ChevronRight, CircleDollarSign, Clock3, Factory,
+  Boxes, Calculator, CheckCircle2, CircleDollarSign, Clock3,
   FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Pencil, Plus, Search,
   MessageCircle, Minus, Printer, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
@@ -12,18 +12,17 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
 import { CalculatorView, type CalculatorQuote, type CalculatorQuoteSupply } from '@/components/calculator-view';
 import { FinanceView } from '@/components/finance-view';
 import { defaultPricingDefaults, type PricingDefaults } from '@/lib/pricing-defaults';
 
-type View = 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Pedidos' | 'Produção' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
+type View = 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Pedidos' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
 type Quote = { id: string; client: string; item: string; date: string; total: string; status: string; quantity?: number; unitPrice?: number; grams?: number; hours?: number; timeHours?: number; timeMinutes?: number; energyRate?: number; machineRate?: number; packaging?: number; fees?: number; margin?: number; notes?: string; supplies?: CalculatorQuoteSupply[] };
 
 const nav: [React.ElementType, View][] = [
   [LayoutDashboard, 'Visão geral'], [Calculator, 'Calculadora'], [FileText, 'Orçamentos'], [ShoppingBag, 'Pedidos'],
-  [Factory, 'Produção'], [Boxes, 'Estoque'], [Users, 'Clientes'],
+  [Boxes, 'Estoque'], [Users, 'Clientes'],
   [CircleDollarSign, 'Financeiro'], [Settings, 'Configurações'],
 ];
 const brl = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
@@ -128,13 +127,12 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
 function Sidebar({ view, menu, onClose, onSelect, user, signOutPath }: { view: View; menu: boolean; onClose: () => void; onSelect: (v: View) => void; user: { name: string; email: string }; signOutPath: string }) {
   return <aside className={`fixed inset-y-0 left-0 z-40 flex w-[238px] flex-col bg-[var(--brand-blue)] text-white transition-transform lg:translate-x-0 ${menu ? 'translate-x-0' : '-translate-x-full'}`}>
     <div className="flex h-[76px] items-center gap-2 border-b border-white/20 px-3"><img src="/imprimo3dlab-logo-white.png" alt="" className="h-14 w-16 shrink-0 object-contain"/><div className="min-w-0"><p className="truncate text-[16px] font-bold tracking-tight">Imprimo3DLab</p><p className="text-[10px] uppercase tracking-[.17em] text-white">Gerenciamento</p></div><button className="ml-auto lg:hidden" aria-label="Fechar menu" onClick={onClose}><X className="size-5" /></button></div>
-    <nav className="flex-1 space-y-1 px-3 py-5"><p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[.16em] text-white">Operação</p>{nav.map(([Icon, label]) => <button key={label} onClick={() => onSelect(label)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${view === label ? 'bg-white font-semibold text-[var(--brand-blue)]' : 'text-white hover:bg-white/15'}`}><Icon className={`size-[18px] ${view === label ? 'text-[#ff8358]' : ''}`} />{label}{label === 'Produção' && <span className="ml-auto rounded-full bg-[#ff6b35] px-1.5 text-[10px] text-white">3</span>}</button>)}</nav>
+    <nav className="flex-1 space-y-1 px-3 py-5"><p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[.16em] text-white">Operação</p>{nav.map(([Icon, label]) => <button key={label} onClick={() => onSelect(label)} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${view === label ? 'bg-white font-semibold text-[var(--brand-blue)]' : 'text-white hover:bg-white/15'}`}><Icon className={`size-[18px] ${view === label ? 'text-[#ff8358]' : ''}`} />{label}</button>)}</nav>
     <div className="m-3 rounded-xl border border-white/20 bg-black/10 p-3.5"><div className="flex items-center gap-3"><div className="grid size-9 shrink-0 place-items-center rounded-full bg-white/20 text-xs font-bold">{initials(user.name)}</div><div className="min-w-0"><p className="truncate text-sm font-medium">{user.name}</p><p className="text-[11px] text-white">Administrador</p></div></div><a href={signOutPath} target="_top" className="mt-3 block border-t border-white/20 pt-2 text-center text-[11px] font-medium text-white transition hover:bg-white/10">Sair do sistema</a></div>
   </aside>;
 }
 
 function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; userName: string }) {
-  const jobs = [{ name: 'Bambu Lab X1C', detail: 'Maquete • peças 8/14', value: 64 }, { name: 'Creality K1 Max', detail: 'Engrenagem técnica', value: 82 }, { name: 'Elegoo Saturn 3', detail: 'Modelo anatômico', value: 18 }];
   const [transactions, setTransactions] = useState<Array<{ type: 'Receita' | 'Despesa'; amount: number; dueDate: string }>>([]);
   useEffect(() => {
     void fetch('/api/transactions').then(async response => {
@@ -168,12 +166,11 @@ function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; us
         ['#1048 · Lumina Arquitetura', 'Maquete residencial', 'Hoje, 16:00', 'R$ 1.480,00', 'Em produção'], ['#1047 · Studio Objeto', 'Kit 12 expositores', 'Amanhã', 'R$ 864,00', 'Aguardando'], ['#1046 · Rafael Martins', 'Engrenagem técnica', '30 ago', 'R$ 295,00', 'Acabamento'], ['#1045 · Clínica Orto+', 'Modelo anatômico', '02 set', 'R$ 720,00', 'Aprovado'],
       ]} /></CardContent></Card>
     </div>
-    <Card className="mt-5 border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>Fila de produção</CardTitle><p className="text-xs text-slate-500">3 máquinas trabalhando agora</p></div><Button variant="ghost" onClick={() => onNavigate('Produção')}>Abrir fila <ChevronRight /></Button></CardHeader><CardContent className="grid gap-3 md:grid-cols-3">{jobs.map(job => <div key={job.name} className="rounded-xl border p-4"><div className="flex items-center gap-2"><span className="size-2.5 rounded-full bg-emerald-500"/><b className="text-xs">{job.name}</b></div><p className="mt-3 text-xs text-slate-500">{job.detail}</p><Progress value={job.value} className="mt-2"/><p className="mt-2 text-right text-[10px] text-slate-500">{job.value}% concluído</p></div>)}</CardContent></Card>
     <section className="mt-5 grid gap-4 sm:grid-cols-3"><AlertBox icon={PackageOpen} title="2 itens com estoque baixo" detail="PLA Branco e Resina Cinza" tone="orange"/><AlertBox icon={Clock3} title="18h de produção agendada" detail="Capacidade livre amanhã: 11h" tone="blue"/><AlertBox icon={WalletCards} title="R$ 2.350 a receber" detail="5 lançamentos em aberto" tone="green"/></section>
   </>;
 }
 
-const moduleData: Record<Exclude<View, 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Produção' | 'Configurações'>, { title: string; detail: string; headers: string[]; rows: string[][]; action: string }> = {
+const moduleData: Record<Exclude<View, 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Configurações'>, { title: string; detail: string; headers: string[]; rows: string[][]; action: string }> = {
   Pedidos: { title: '12 pedidos ativos', detail: 'Do orçamento aprovado até a entrega', headers: ['Pedido', 'Cliente', 'Trabalho', 'Responsável', 'Prazo', 'Status'], rows: [['#1048', 'Lumina Arquitetura', 'Maquete residencial', 'Carlos', 'Hoje, 16:00', 'Em produção'], ['#1047', 'Studio Objeto', 'Kit 12 expositores', 'Marina', 'Amanhã', 'Aguardando'], ['#1046', 'Rafael Martins', 'Engrenagem técnica', 'Carlos', '30 ago', 'Acabamento'], ['#1045', 'Clínica Orto+', 'Modelo anatômico', 'Marina', '02 set', 'Aprovado']], action: 'Novo pedido' },
   Estoque: { title: 'Estoque de materiais', detail: 'Filamentos, resinas, peças e embalagens', headers: ['Material', 'Tipo / cor', 'Marca', 'Disponível', 'Custo médio', 'Situação'], rows: [['PLA Branco Neve', 'PLA · Branco', '3D Fila', '420 g', 'R$ 92/kg', 'Estoque baixo'], ['PETG Preto', 'PETG · Preto', 'Voolt3D', '1,8 kg', 'R$ 108/kg', 'Normal'], ['Resina Cinza', 'Standard · Cinza', 'Anycubic', '310 ml', 'R$ 146/L', 'Estoque baixo'], ['PLA Laranja', 'PLA · Laranja', '3D Fila', '2,4 kg', 'R$ 96/kg', 'Normal']], action: 'Entrada de material' },
   Clientes: { title: '86 clientes cadastrados', detail: 'Relacionamento e histórico comercial', headers: ['Cliente', 'Contato', 'Pedidos', 'Último pedido', 'Faturamento', 'Situação'], rows: [['Lumina Arquitetura', '(11) 99945-2231', '14', '28 ago', 'R$ 8.420,00', 'Ativo'], ['Studio Objeto', '(11) 98872-0198', '8', '27 ago', 'R$ 4.180,00', 'Ativo'], ['Clínica Orto+', '(11) 99128-6330', '5', '25 ago', 'R$ 3.750,00', 'Ativo'], ['Rafael Martins', '(11) 98041-7212', '3', '24 ago', 'R$ 860,00', 'Pessoa física']], action: 'Novo cliente' },
@@ -184,7 +181,6 @@ function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, onConver
   if (view === 'Calculadora') return <CalculatorView onQuoteSaved={onCalculatorQuoteSaved}/>;
   if (view === 'Orçamentos') return <QuotesView quotes={quotes} onNewQuote={onNewQuote} onEdit={onEditQuote} onDelete={onDeleteQuote} onConvert={onConvertQuote}/>;
   if (view === 'Pedidos') return <OrdersView />;
-  if (view === 'Produção') return <Production />;
   if (view === 'Estoque') return <FinishedParts />;
   if (view === 'Clientes') return <CustomersView />;
   if (view === 'Financeiro') return <FinanceView />;
@@ -602,13 +598,6 @@ function QuotesView({ quotes, onNewQuote, onEdit, onDelete, onConvert }: { quote
 
 function ModuleShell({ title, detail, action, onAction, compact = false, children }: { title: string; detail: string; action: string; onAction?: () => void; compact?: boolean; children: React.ReactNode }) {
   return <><div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><h2 className="text-2xl font-bold">{title}</h2><p className="text-sm text-slate-500">{detail}</p></div><Button onClick={onAction} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus/>{action}</Button></div><Card className={`border-0 bg-white py-0 shadow-sm ring-1 ring-[#e6eaf0] ${compact ? 'gap-0' : ''}`}><div className="flex flex-wrap items-center gap-3 border-b p-4"><div className="flex w-full max-w-sm items-center gap-2 rounded-lg border bg-slate-50 px-3"><Search className="size-4 text-slate-400"/><input className="h-9 flex-1 bg-transparent text-sm outline-none" placeholder="Filtrar resultados..."/></div><Badge variant="outline">Todos</Badge><Badge variant="outline">Em andamento</Badge><Badge variant="outline">Concluídos</Badge></div>{children}</Card></>;
-}
-
-function Production() {
-  const [stages, setStages] = useState(['Imprimindo', 'Imprimindo', 'Preparação', 'Fila']);
-  const items = [['Bambu Lab X1C', '#1048 · Maquete residencial', 'Carlos', '64%'], ['Creality K1 Max', '#1046 · Engrenagem técnica', 'Marina', '82%'], ['Elegoo Saturn 3', '#1045 · Modelo anatômico', 'Carlos', '18%'], ['Prusa MK4', '#1047 · Kit expositores', 'Marina', '0%']];
-  const advance = (i: number) => setStages(s => s.map((v, index) => index === i ? (v === 'Fila' ? 'Preparação' : v === 'Preparação' ? 'Imprimindo' : v === 'Imprimindo' ? 'Acabamento' : 'Concluído') : v));
-  return <><div className="mb-5"><h2 className="text-2xl font-bold">Painel de produção</h2><p className="text-sm text-slate-500">Atualize cada trabalho conforme ele avança</p></div><div className="grid gap-4 lg:grid-cols-2">{items.map((item, i) => <Card key={item[0]} className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>{item[0]}</CardTitle><p className="text-xs text-slate-500">{item[1]}</p></div><Badge className="bg-blue-50 text-blue-700">{stages[i]}</Badge></CardHeader><CardContent><div className="mb-3 flex justify-between text-xs text-slate-500"><span>Responsável: {item[2]}</span><b>{item[3]}</b></div><Progress value={Number(item[3].replace('%',''))}/><Button onClick={() => advance(i)} variant="outline" className="mt-4 w-full">Avançar etapa <ChevronRight/></Button></CardContent></Card>)}</div></>;
 }
 
 function SettingsView({ user }: { user: { name: string; email: string } }) {
