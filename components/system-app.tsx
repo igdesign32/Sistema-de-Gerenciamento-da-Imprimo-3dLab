@@ -14,12 +14,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
-import { CalculatorView, type CalculatorQuote } from '@/components/calculator-view';
+import { CalculatorView, type CalculatorQuote, type CalculatorQuoteSupply } from '@/components/calculator-view';
 import { FinanceView } from '@/components/finance-view';
 import { defaultPricingDefaults, type PricingDefaults } from '@/lib/pricing-defaults';
 
 type View = 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Pedidos' | 'Produção' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
-type Quote = { id: string; client: string; item: string; date: string; total: string; status: string; quantity?: number; unitPrice?: number; grams?: number; hours?: number; timeHours?: number; timeMinutes?: number; energyRate?: number; machineRate?: number; packaging?: number; fees?: number; margin?: number; notes?: string };
+type Quote = { id: string; client: string; item: string; date: string; total: string; status: string; quantity?: number; unitPrice?: number; grams?: number; hours?: number; timeHours?: number; timeMinutes?: number; energyRate?: number; machineRate?: number; packaging?: number; fees?: number; margin?: number; notes?: string; supplies?: CalculatorQuoteSupply[] };
 
 const nav: [React.ElementType, View][] = [
   [LayoutDashboard, 'Visão geral'], [Calculator, 'Calculadora'], [FileText, 'Orçamentos'], [ShoppingBag, 'Pedidos'],
@@ -87,7 +87,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
     window.setTimeout(() => setNotice(''), 3500);
     try { await fetch(`/api/quotes?id=${encodeURIComponent(quote.id)}`, { method: 'DELETE' }); } catch { /* local list remains updated */ }
   };
-  const saveCalculatorQuote = (quote: CalculatorQuote) => { setQuotes(current => [quote, ...current]); setNotice(`${quote.id} salvo em Orçamentos.`); window.setTimeout(() => setNotice(''), 3500); };
+  const saveCalculatorQuote = (quote: CalculatorQuote) => { setQuotes(current => [quote, ...current]); setView('Orçamentos'); setNotice(`${quote.id} salvo em Orçamentos com peso, tempo e insumos.`); window.setTimeout(() => setNotice(''), 3500); };
 
   return <div className="min-h-screen bg-[#f4f7fb] text-[#172033]">
     <Sidebar view={view} menu={menu} onClose={() => setMenu(false)} onSelect={selectView} user={user} signOutPath={signOutPath} />
@@ -593,6 +593,7 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
   const [quantity, setQuantity] = useState(1);
   const [customUnitPrice, setCustomUnitPrice] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
+  const [quoteSupplies, setQuoteSupplies] = useState<CalculatorQuoteSupply[]>([]);
   const [paying, setPaying] = useState(false);
   const hours = timeHours + timeMinutes / 60;
 
@@ -613,6 +614,7 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
       setQuantity(initialQuote?.quantity ?? 1);
       setCustomUnitPrice(initialQuote ? initialQuote.unitPrice ?? parseBrl(initialQuote.total) / Math.max(1, initialQuote.quantity ?? 1) : null);
       setNotes(initialQuote?.notes ?? '');
+      setQuoteSupplies(initialQuote?.supplies ?? []);
     };
     void fetch('/api/settings')
       .then(response => response.ok ? response.json() : Promise.reject())
@@ -636,9 +638,9 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
     id: initialQuote?.id ?? `ORC-${sequence}`,
     client: client.trim(), item: item.trim(), date: initialQuote?.date ?? '30 ago', total: brl(finalTotal),
     status: initialQuote?.status ?? 'Rascunho', quantity, unitPrice, grams, hours, timeHours, timeMinutes,
-    energyRate, machineRate, packaging, fees, margin, notes,
+    energyRate, machineRate, packaging, fees, margin, notes, supplies: quoteSupplies,
   });
-  const payload = (quote: Quote) => ({ ...quote, total: finalTotal });
+  const payload = (quote: Quote) => ({ ...quote, total: finalTotal, details: { selectedSupplies: quote.supplies ?? [] } });
   const submit = () => { if (!valid) return; const quote = buildQuote(); onSave(quote, payload(quote)); };
   const print = () => { if (!valid) return; onPrint(buildQuote()); };
   const pay = async () => {
@@ -665,6 +667,7 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
       <Field label="Taxas / impostos (%)"><Input readOnly value={fees} className={standardInputClass}/></Field>
       <Field label="Margem de lucro (%)"><Input readOnly value={margin} className={standardInputClass}/></Field>
       <Field label="Observações"><Textarea value={notes} onChange={event => setNotes(event.target.value)} placeholder="Acabamento, cor, tolerâncias..."/></Field>
+      {quoteSupplies.length > 0 && <div className="sm:col-span-2"><Field label="Insumos adicionados na calculadora"><div className="space-y-2 rounded-xl border bg-slate-50 p-3">{quoteSupplies.map(supply => <div key={supply.id} className="flex items-center justify-between gap-3 text-xs"><span><b className="text-slate-700">{supply.name}</b> · {supply.quantity} {supply.unit}</span><span className="font-semibold text-slate-600">{brl(supply.quantity * supply.unitCost)}</span></div>)}</div></Field></div>}
     </div>
     <p className="text-[11px] text-slate-500">Os campos em cinza seguem os padrões salvos em Configurações.</p>
     <div className="grid items-stretch gap-3 sm:grid-cols-3"><div className="flex min-h-24 flex-col justify-center rounded-xl bg-[#032c5e] p-4 shadow-sm"><p className="text-xs font-medium text-white/80">Custo</p><p className="mt-1 text-xl font-bold text-white">{brl(calc.cost)}</p></div><div className="flex min-h-24 flex-col justify-center rounded-xl bg-[#032c5e] p-4 shadow-sm"><p className="text-xs font-medium text-white/80">Lucro real</p><p className={`mt-1 text-xl font-bold ${finalTotal - calc.cost >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{brl(finalTotal - calc.cost)}</p></div><div className="flex min-h-24 flex-col justify-center rounded-xl bg-[#032c5e] p-4 shadow-sm"><label htmlFor="quote-total" className="text-xs font-medium text-white/80">Total editável</label><div className="relative mt-1"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-white">R$</span><Input id="quote-total" aria-label="Valor total do orçamento" type="number" min="0" step=".01" value={Number(finalTotal.toFixed(2))} onChange={event => setCustomUnitPrice(Math.max(0, Number(event.target.value) || 0) / Math.max(1, quantity))} className="h-10 border-white/35 bg-white/10 pl-10 text-lg font-bold text-white placeholder:text-white/50 focus-visible:border-white focus-visible:ring-white/30"/></div></div></div>
