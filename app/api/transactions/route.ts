@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import { getChatGPTUser } from '@/app/chatgpt-auth';
 
-type TransactionMetadata = { product?: string; inventoryItemId?: string; quantity?: number; account?: string; notes?: string };
+type TransactionMetadata = { product?: string; inventoryItemId?: string; quantity?: number; account?: string; notes?: string; expenseKind?: 'Fixa' | 'Variável' };
 type TransactionInput = TransactionMetadata & { id?: string; type?: 'income' | 'expense'; category?: string; unitValue?: number; paymentMethod?: string; status?: string; dueDate?: string };
 type TransactionRow = { id: string; orderId: string; type: string; category: string; description: string; amount: number; paymentMethod: string; status: string; dueDate: string };
 
@@ -11,7 +11,7 @@ function decode(row: TransactionRow) {
   let metadata: TransactionMetadata = {};
   try { metadata = JSON.parse(row.description) as TransactionMetadata; } catch { metadata = { product: row.description }; }
   const quantity = Math.max(.01, Number(metadata.quantity) || 1);
-  return { ...row, product: metadata.product || row.description, quantity, unitValue: row.amount / quantity, account: metadata.account || 'Conta Corrente', notes: metadata.notes || '' };
+  return { ...row, product: metadata.product || row.description, quantity, unitValue: row.amount / quantity, account: metadata.account || 'Conta Corrente', notes: metadata.notes || '', expenseKind: metadata.expenseKind || (row.type === 'Despesa' ? 'Variável' : undefined) };
 }
 
 function validate(body: TransactionInput) {
@@ -20,7 +20,7 @@ function validate(body: TransactionInput) {
   if (!body.product?.trim() || !body.category?.trim() || !body.dueDate || quantity <= 0 || unitValue <= 0) return null;
   const dueAt = Math.floor(new Date(`${body.dueDate}T12:00:00Z`).getTime() / 1000);
   if (!Number.isFinite(dueAt)) return null;
-  const metadata: TransactionMetadata = { product: body.product.trim(), inventoryItemId: body.inventoryItemId || undefined, quantity, account: body.account?.trim() || 'Conta Corrente', notes: body.notes?.trim() || '' };
+  const metadata: TransactionMetadata = { product: body.product.trim(), inventoryItemId: body.inventoryItemId || undefined, quantity, account: body.account?.trim() || 'Conta Corrente', notes: body.notes?.trim() || '', expenseKind: body.type === 'expense' ? body.expenseKind === 'Fixa' ? 'Fixa' : 'Variável' : undefined };
   return { amount: quantity * unitValue, dueAt, metadata };
 }
 
