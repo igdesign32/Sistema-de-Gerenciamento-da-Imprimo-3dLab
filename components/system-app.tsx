@@ -43,6 +43,15 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
   const [quotes, setQuotes] = useState(seedQuotes);
   const [notice, setNotice] = useState('');
 
+  useEffect(() => {
+    void fetch('/api/quotes').then(async response => {
+      if (!response.ok) throw new Error('Não foi possível carregar os orçamentos.');
+      return await response.json() as Array<Omit<Quote, 'total'> & { total: number }>;
+    }).then(stored => {
+      if (stored.length) setQuotes(stored.map(quote => ({ ...quote, total: brl(Number(quote.total)), quantity: quote.quantity ?? 1, unitPrice: quote.unitPrice ?? Number(quote.total) })));
+    }).catch(() => { /* Mantém a prévia local quando o banco não estiver disponível. */ });
+  }, []);
+
   const selectView = (next: View) => { setView(next); setMenu(false); };
   const saveQuote = async (quote: Quote, payload: Record<string, unknown>) => {
     const editing = quotes.some(current => current.id === quote.id);
@@ -53,6 +62,24 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
     setNotice(`${quote.id} ${editing ? 'atualizado' : 'salvo'} com sucesso.`);
     window.setTimeout(() => setNotice(''), 3500);
     try { await fetch('/api/quotes', { method: editing ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); } catch { /* UI remains useful offline */ }
+  };
+  const payQuote = async (quote: Quote, payload: Record<string, unknown>) => {
+    try {
+      const response = await fetch('/api/quotes/pay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível registrar o pagamento.');
+      const paidQuote = { ...quote, status: 'Pago' };
+      setQuotes(current => current.some(item => item.id === paidQuote.id) ? current.map(item => item.id === paidQuote.id ? paidQuote : item) : [paidQuote, ...current]);
+      setQuoteOpen(false);
+      setEditingQuote(null);
+      setNotice(`${paidQuote.id} pago. Receita e custo registrados no Financeiro.`);
+      window.setTimeout(() => setNotice(''), 4500);
+      return true;
+    } catch (problem) {
+      setNotice(problem instanceof Error ? problem.message : 'Não foi possível registrar o pagamento.');
+      window.setTimeout(() => setNotice(''), 4500);
+      return false;
+    }
   };
   const deleteQuote = async (quote: Quote) => {
     setQuotes(current => current.filter(item => item.id !== quote.id));
@@ -75,7 +102,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
         {view === 'Visão geral' ? <Dashboard onNavigate={selectView} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => { setEditingQuote(null); setQuoteOpen(true); }} onEditQuote={quote => { setEditingQuote(quote); setQuoteOpen(true); }} onDeleteQuote={deleteQuote} onCalculatorQuoteSaved={saveCalculatorQuote} user={user} />}
       </div>
     </main>
-    <QuoteDialog open={quoteOpen} onOpenChange={open => { setQuoteOpen(open); if (!open) setEditingQuote(null); }} onSave={saveQuote} onPrint={quote => { setQuoteOpen(false); setEditingQuote(null); setQuoteEditor(quote); }} initialQuote={editingQuote} sequence={1053 + quotes.length - seedQuotes.length} />
+    <QuoteDialog open={quoteOpen} onOpenChange={open => { setQuoteOpen(open); if (!open) setEditingQuote(null); }} onSave={saveQuote} onPay={payQuote} onPrint={quote => { setQuoteOpen(false); setEditingQuote(null); setQuoteEditor(quote); }} initialQuote={editingQuote} sequence={1053 + quotes.length - seedQuotes.length} />
     {quoteEditor && <QuoteEditor quote={quoteEditor} onClose={() => setQuoteEditor(null)}/>}
     {notice && <output className="fixed bottom-5 right-5 z-[70] rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-xl">{notice}</output>}
   </div>;
@@ -552,7 +579,7 @@ function SettingsView({ user }: { user: { name: string; email: string } }) {
   </div>;
 }
 
-function QuoteDialog({ open, onOpenChange, onSave, onPrint, initialQuote, sequence }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (q: Quote, p: Record<string, unknown>) => void; onPrint: (quote: Quote) => void; initialQuote: Quote | null; sequence: number }) {
+function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote, sequence }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (q: Quote, p: Record<string, unknown>) => void; onPay: (quote: Quote, payload: Record<string, unknown>) => Promise<boolean>; onPrint: (quote: Quote) => void; initialQuote: Quote | null; sequence: number }) {
   const [client, setClient] = useState('');
   const [item, setItem] = useState('');
   const [grams, setGrams] = useState(180);
@@ -566,6 +593,7 @@ function QuoteDialog({ open, onOpenChange, onSave, onPrint, initialQuote, sequen
   const [quantity, setQuantity] = useState(1);
   const [customUnitPrice, setCustomUnitPrice] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
+  const [paying, setPaying] = useState(false);
   const hours = timeHours + timeMinutes / 60;
 
   useEffect(() => {
@@ -613,6 +641,13 @@ function QuoteDialog({ open, onOpenChange, onSave, onPrint, initialQuote, sequen
   const payload = (quote: Quote) => ({ ...quote, total: finalTotal });
   const submit = () => { if (!valid) return; const quote = buildQuote(); onSave(quote, payload(quote)); };
   const print = () => { if (!valid) return; onPrint(buildQuote()); };
+  const pay = async () => {
+    if (!valid || initialQuote?.status === 'Pago') return;
+    setPaying(true);
+    const quote = { ...buildQuote(), status: 'Pago' };
+    await onPay(quote, { ...payload(quote), cost: calc.cost });
+    setPaying(false);
+  };
   const standardInputClass = 'bg-slate-50 text-slate-600';
 
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
@@ -632,8 +667,8 @@ function QuoteDialog({ open, onOpenChange, onSave, onPrint, initialQuote, sequen
       <Field label="Observações"><Textarea value={notes} onChange={event => setNotes(event.target.value)} placeholder="Acabamento, cor, tolerâncias..."/></Field>
     </div>
     <p className="text-[11px] text-slate-500">Os campos em cinza seguem os padrões salvos em Configurações.</p>
-    <div className="grid gap-3 rounded-xl bg-[var(--brand-blue)] p-4 sm:grid-cols-3"><div><p className="text-xs text-white/70">Custo</p><p className="text-xl font-bold text-white">{brl(calc.cost)}</p></div><div><p className="text-xs text-white/70">Lucro</p><p className="text-xl font-bold text-emerald-300">{brl(finalTotal - calc.cost)}</p></div><div><p className="text-xs text-white/70">Total</p><p className="text-xl font-bold text-[#ff8358]">{brl(finalTotal)}</p></div></div>
-    <DialogFooter className="sm:justify-between"><Button onClick={print} disabled={!valid} variant="outline"><Printer/> Imprimir orçamento</Button><div className="flex gap-2"><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!valid} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{initialQuote ? 'Salvar alterações' : 'Salvar orçamento'}</Button></div></DialogFooter>
+    <div className="grid gap-3 rounded-xl bg-[var(--brand-blue)] p-4 sm:grid-cols-3"><div><p className="text-xs text-white/70">Custo</p><p className="text-xl font-bold text-white">{brl(calc.cost)}</p></div><div><p className="text-xs text-white/70">Lucro real</p><p className={`text-xl font-bold ${finalTotal - calc.cost >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{brl(finalTotal - calc.cost)}</p></div><div><label htmlFor="quote-total" className="text-xs text-white/70">Total editável</label><div className="relative mt-1"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-white">R$</span><Input id="quote-total" aria-label="Valor total do orçamento" type="number" min="0" step=".01" value={Number(finalTotal.toFixed(2))} onChange={event => setCustomUnitPrice(Math.max(0, Number(event.target.value) || 0) / Math.max(1, quantity))} className="h-10 border-white/30 bg-white/15 pl-10 text-lg font-bold text-[#ff9b77] focus-visible:border-white focus-visible:ring-white/20"/></div></div></div>
+    <DialogFooter className="flex-wrap sm:justify-between"><Button onClick={print} disabled={!valid} variant="outline"><Printer/> Imprimir orçamento</Button><div className="flex flex-wrap gap-2"><Button onClick={() => void pay()} disabled={!valid || paying || initialQuote?.status === 'Pago'} className="bg-emerald-600 text-white hover:bg-emerald-700"><CheckCircle2/> {initialQuote?.status === 'Pago' ? 'Pago' : paying ? 'Registrando...' : 'Pago'}</Button><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!valid || paying} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{initialQuote ? 'Salvar alterações' : 'Salvar orçamento'}</Button></div></DialogFooter>
   </DialogContent></Dialog>;
 }
 

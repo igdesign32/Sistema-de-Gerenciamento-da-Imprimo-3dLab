@@ -19,8 +19,8 @@ const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency
 const localDate = () => { const date = new Date(); date.setMinutes(date.getMinutes() - date.getTimezoneOffset()); return date.toISOString().slice(0, 10); };
 const fieldClass = 'h-10 w-full rounded-md border border-[#dfe5ee] bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#0068ff] focus:ring-2 focus:ring-[#0068ff]/15';
 const editFieldClass = 'h-10 w-full rounded-md border border-blue-300/30 bg-[#032c5e] px-3 text-sm text-white outline-none focus:border-[#ff6b35] focus:ring-2 focus:ring-[#ff6b35]/25';
-const categories = ['Vendas diversas', 'Peças acabadas', 'Serviço de impressão', 'Projeto personalizado', 'Outros'];
-const expenseCategories = ['Material', 'Energia', 'Manutenção', 'Embalagem', 'Frete', 'Serviços', 'Impostos', 'Aluguel', 'Outros'];
+const categories = ['Vendas diversas', 'Peças acabadas', 'Venda de orçamento', 'Serviço de impressão', 'Projeto personalizado', 'Outros'];
+const expenseCategories = ['Material', 'Custo de produção', 'Energia', 'Manutenção', 'Embalagem', 'Frete', 'Serviços', 'Impostos', 'Aluguel', 'Outros'];
 const accounts = ['Conta Corrente', 'Dinheiro', 'Carteira Digital', 'Outros'];
 const paymentMethods = ['Pix', 'Dinheiro', 'Cartão', 'Transferência', 'Boleto', 'Venda Direta'];
 
