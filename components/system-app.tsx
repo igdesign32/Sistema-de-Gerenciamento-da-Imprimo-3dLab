@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Boxes, Calculator, CheckCircle2, CircleDollarSign, Clock3,
@@ -190,8 +190,9 @@ function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, onConver
 }
 
 function OrdersView() {
-  const [orders, setOrders] = useState<Array<{ id: string; customer: string; items: string; quantity: number; total: number; status: string; createdAt: string }>>([]);
+  const [orders, setOrders] = useState<Array<{ id: string; customer: string; packageName: string; items: string; itemDetails: Array<{ name: string; quantity: number; unitPrice: number; subtotal: number }>; quantity: number; total: number; status: string; createdAt: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedOrder, setExpandedOrder] = useState('');
   const [savingId, setSavingId] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const [error, setError] = useState('');
@@ -238,7 +239,7 @@ function OrdersView() {
   };
   return <ModuleShell compact title={`${visibleOrders.length} pedidos em ${monthLabel(selectedMonth)}`} detail="Pedidos ativos continuam no mês seguinte até serem concluídos" action="Novo pedido">
     <div className="flex flex-col gap-2 border-b px-4 py-2 sm:flex-row sm:items-center sm:justify-between"><div><label htmlFor="orders-month" className="text-xs font-semibold text-slate-600">Visualizar mês</label>{carriedOrders > 0 && <p className="text-[11px] text-blue-600">Inclui {carriedOrders} {carriedOrders === 1 ? 'pedido ativo de mês anterior' : 'pedidos ativos de meses anteriores'}.</p>}</div><select id="orders-month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} className="h-8 rounded-lg border bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-[#0068ff]/30">{availableMonths.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}</select></div>
-    <div className="overflow-x-auto"><table className="w-full min-w-[820px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Pedido','Cliente','Itens','Criado em','Valor','Status','Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{visibleOrders.map(order => <tr key={order.id} className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{order.id}</td><td className="px-4 py-3 text-xs text-slate-600">{order.customer}</td><td className="px-4 py-3 text-xs text-slate-600">{order.items} · {order.quantity} un.</td><td className="px-4 py-3 text-xs text-slate-600">{order.createdAt}</td><td className="px-4 py-3 text-xs text-slate-600">{brl(order.total)}</td><td className="px-4 py-2"><select aria-label={`Status do pedido ${order.id}`} value={order.status} disabled={savingId === order.id} onChange={event => void updateStatus(order.id, event.target.value)} className={`h-8 cursor-pointer rounded-full border-0 px-3 text-xs font-semibold outline-none ring-1 transition focus:ring-2 focus:ring-[#0068ff] disabled:cursor-wait disabled:opacity-60 ${statusClass(order.status)}`}><option value="Aguardando fila">Aguardando fila</option><option value="Em andamento">Em andamento</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select></td><td className="px-4 py-2"><Button onClick={() => void deleteOrder(order.id)} disabled={deletingId === order.id} variant="ghost" size="icon" aria-label={`Apagar pedido ${order.id}`} title="Apagar pedido" className="text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2/></Button></td></tr>)}</tbody></table></div>
+    <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Pedido','Cliente','Pacote / itens','Criado em','Valor','Status','Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{visibleOrders.map(order => <Fragment key={order.id}><tr className="border-b hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{order.id}</td><td className="px-4 py-3 text-xs text-slate-600">{order.customer}</td><td className="px-4 py-3"><b className="block text-xs text-slate-800">{order.packageName}</b><button type="button" onClick={() => setExpandedOrder(current => current === order.id ? '' : order.id)} className="mt-1 text-[11px] font-medium text-[#0068ff] hover:underline">{expandedOrder === order.id ? 'Ocultar itens' : `Ver ${order.itemDetails?.length || order.quantity} itens`}</button></td><td className="px-4 py-3 text-xs text-slate-600">{order.createdAt}</td><td className="px-4 py-3 text-xs text-slate-600">{brl(order.total)}</td><td className="px-4 py-2"><select aria-label={`Status do pedido ${order.id}`} value={order.status} disabled={savingId === order.id} onChange={event => void updateStatus(order.id, event.target.value)} className={`h-8 cursor-pointer rounded-full border-0 px-3 text-xs font-semibold outline-none ring-1 transition focus:ring-2 focus:ring-[#0068ff] disabled:cursor-wait disabled:opacity-60 ${statusClass(order.status)}`}><option value="Aguardando fila">Aguardando fila</option><option value="Em andamento">Em andamento</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select></td><td className="px-4 py-2"><Button onClick={() => void deleteOrder(order.id)} disabled={deletingId === order.id} variant="ghost" size="icon" aria-label={`Apagar pedido ${order.id}`} title="Apagar pedido" className="text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2/></Button></td></tr>{expandedOrder === order.id && <tr className="border-b bg-blue-50/50"><td colSpan={7} className="px-4 py-3"><div className="overflow-hidden rounded-lg border border-blue-100 bg-white"><div className="grid grid-cols-[1fr_70px_110px_110px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400"><span>Item do pacote</span><span>Qtd.</span><span>Valor unit.</span><span>Subtotal</span></div>{(order.itemDetails ?? []).map((item, index) => <div key={`${item.name}-${index}`} className="grid grid-cols-[1fr_70px_110px_110px] gap-3 border-t px-3 py-2 text-xs text-slate-700"><span className="font-medium">{item.name}</span><span>{item.quantity}</span><span>{brl(Number(item.unitPrice))}</span><span className="font-semibold">{brl(Number(item.subtotal))}</span></div>)}</div></td></tr>}</Fragment>)}</tbody></table></div>
     {loading && <p className="p-6 text-center text-sm text-slate-400">Carregando pedidos...</p>}{!loading && !visibleOrders.length && <p className="p-6 text-center text-sm text-slate-400">Nenhum pedido neste mês.</p>}{error && <p role="alert" className="border-t bg-red-50 px-4 py-3 text-xs font-medium text-red-700">{error}</p>}
   </ModuleShell>;
 }
@@ -320,6 +321,8 @@ function FinishedParts() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [quoteEditorOpen, setQuoteEditorOpen] = useState(false);
+  const [packageOpen, setPackageOpen] = useState(false);
+  const [packageName, setPackageName] = useState('');
   const [customerOpen, setCustomerOpen] = useState(false);
   const [assignedCustomer, setAssignedCustomer] = useState<Customer | null>(null);
   const [finalizing, setFinalizing] = useState(false);
@@ -369,18 +372,20 @@ function FinishedParts() {
   const finalizeSale = async () => {
     setFinalizing(true);
     try {
-      const response = await fetch('/api/orders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ customerId: assignedCustomer?.id ?? null, items: cart }) });
+      const response = await fetch('/api/orders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ customerId: assignedCustomer?.id ?? null, packageName, items: cart }) });
       const result = await response.json() as { id?: string; error?: string };
       if (!response.ok) throw new Error(result.error || 'Não foi possível finalizar o pedido');
       setCart([]);
       setAssignedCustomer(null);
+      setPackageName('');
       setCartOpen(false);
       setDataNotice(`${result.id} salvo. Estoque, pedido e financeiro atualizados.`);
       await loadParts();
     } catch (error) { setDataNotice(error instanceof Error ? error.message : 'Não foi possível finalizar o pedido.'); }
     finally { setFinalizing(false); }
   };
-  const openCustomerSelection = () => { setCartOpen(false); setCustomerOpen(true); };
+  const openPackageNaming = () => { setCartOpen(false); setPackageOpen(true); };
+  const confirmPackageName = (name: string) => { setPackageName(name); setPackageOpen(false); setCustomerOpen(true); };
   const openQuoteEditor = () => { setCartOpen(false); setQuoteEditorOpen(true); };
   const assignCustomer = (customer: Customer) => { setAssignedCustomer(customer); setCustomerOpen(false); setCartOpen(true); };
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
@@ -426,7 +431,8 @@ function FinishedParts() {
       </table></div>
     </Card>
     <PieceDialog key={editing?.id ?? 'new'} open={pieceOpen} onOpenChange={setPieceOpen} initial={editing} onSave={savePart}/>
-    <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={finalizeSale} onAddToCustomer={openCustomerSelection} onPrint={openQuoteEditor} assignedCustomer={assignedCustomer} finalizing={finalizing}/>
+    <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={finalizeSale} onAddToCustomer={openPackageNaming} onPrint={openQuoteEditor} assignedCustomer={assignedCustomer} packageName={packageName} finalizing={finalizing}/>
+    <PackageNameDialog open={packageOpen} onOpenChange={open => { setPackageOpen(open); if (!open) setCartOpen(true); }} initialName={packageName} itemCount={cartCount} total={cart.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)} onConfirm={confirmPackageName}/>
     <CustomerOrderDialog open={customerOpen} onOpenChange={open => { setCustomerOpen(open); if (!open) setCartOpen(true); }} onSelect={assignCustomer}/>
     {quoteEditorOpen && <QuoteEditor parts={parts} cart={cart} customer={assignedCustomer} onClose={() => setQuoteEditorOpen(false)}/>}
   </div>;
@@ -497,7 +503,13 @@ function SupplyDialog({ open, onOpenChange, initial, onSave }: { open: boolean; 
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle>{initial ? 'Editar insumo' : 'Novo insumo'}</DialogTitle><DialogDescription>Cadastre materiais extras usados na montagem e entrega dos produtos.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="Nome do insumo *"><Input value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Argola Italiana"/></Field><Field label="Tipo"><Input value={type} onChange={event => setType(event.target.value)} placeholder="Ex.: Embalagem, chaveiro ou outro"/></Field><Field label="Quantidade em estoque"><Input type="number" min="0" step=".01" value={quantity} onChange={event => setQuantity(Math.max(0, Number(event.target.value)))}/></Field><Field label="Unidade"><Input value={unit} onChange={event => setUnit(event.target.value)} placeholder="un, m, kg, ml..."/></Field><Field label="Custo unitário (R$)"><Input type="number" min="0" step=".01" value={unitCost} onChange={event => setUnitCost(Math.max(0, Number(event.target.value)))}/></Field><Field label="Fornecedor"><Input value={supplier} onChange={event => setSupplier(event.target.value)} placeholder="Ex.: Shopee"/></Field></div>{restocking && initial && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><Field label={`Quantidade para reposição (${unit || 'un'})`}><Input autoFocus type="number" min="0" step=".01" value={restockQuantity} onChange={event => setRestockQuantity(Math.max(0, Number(event.target.value)))}/></Field><div className="mt-2 flex justify-between text-xs text-emerald-800"><span>Estoque atual: <b>{initial.quantity} {unit}</b></span><span>Após salvar: <b>{initial.quantity + restockQuantity} {unit}</b></span></div></div>}<div className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-800">Valor atual em estoque: <b>{brl((restocking && initial ? initial.quantity + restockQuantity : quantity) * unitCost)}</b></div><DialogFooter>{initial && <Button variant="outline" onClick={() => { setRestocking(current => !current); setRestockQuantity(0); }}>{restocking ? 'Cancelar reposição' : 'Reposição'}</Button>}<Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!name.trim() || (restocking && restockQuantity <= 0)} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{restocking ? 'Salvar reposição' : initial ? 'Salvar alterações' : 'Adicionar insumo'}</Button></DialogFooter></DialogContent></Dialog>;
 }
 
-function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, onPrint, assignedCustomer, finalizing }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; onPrint: () => void; assignedCustomer: Customer | null; finalizing: boolean }) {
+function PackageNameDialog({ open, onOpenChange, initialName, itemCount, total, onConfirm }: { open: boolean; onOpenChange: (open: boolean) => void; initialName: string; itemCount: number; total: number; onConfirm: (name: string) => void }) {
+  const [name, setName] = useState(initialName);
+  useEffect(() => { if (open) setName(initialName); }, [open, initialName]);
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Nomear pacote da venda</DialogTitle><DialogDescription>Dê um nome ao conjunto de produtos antes de vinculá-lo ao cliente.</DialogDescription></DialogHeader><Field label="Nome do pacote *"><Input autoFocus value={name} onChange={event => setName(event.target.value)} placeholder="Ex.: Vendas do dia" onKeyDown={event => { if (event.key === 'Enter' && name.trim()) onConfirm(name.trim()); }}/></Field><div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm"><div><p className="text-xs text-slate-500">Itens no pacote</p><b>{itemCount} {itemCount === 1 ? 'unidade' : 'unidades'}</b></div><div className="text-right"><p className="text-xs text-slate-500">Valor somado</p><b className="text-[#e65d2c]">{brl(total)}</b></div></div><DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={() => onConfirm(name.trim())} disabled={!name.trim()} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">Escolher cliente</Button></DialogFooter></DialogContent></Dialog>;
+}
+
+function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFinalize, onAddToCustomer, onPrint, assignedCustomer, packageName, finalizing }: { open: boolean; onOpenChange: (open: boolean) => void; parts: FinishedPart[]; cart: CartItem[]; onCartChange: (items: CartItem[]) => void; onFinalize: () => void; onAddToCustomer: () => void; onPrint: () => void; assignedCustomer: Customer | null; packageName: string; finalizing: boolean }) {
   const [supplies, setSupplies] = useState<Supply[]>([]);
   const [selectedSupply, setSelectedSupply] = useState<Record<string, string>>({});
   const [supplyQuantity, setSupplyQuantity] = useState<Record<string, number>>({});
@@ -545,8 +557,8 @@ function SalesCartDialog({ open, onOpenChange, parts, cart, onCartChange, onFina
       <div className="mt-4 flex justify-between border-t border-slate-700 pt-3 text-xs text-slate-400"><span>Custo: <b className="text-slate-200">{brl(part.cost * item.quantity + supplyCost(item))}</b></span><span className="font-semibold text-[#ff8358]">Subtotal: {brl(item.unitPrice * item.quantity)}</span></div>
     </div>)}</div>}
     {rows.length > 0 && <><div className="rounded-xl border border-[#ff6b35]/60 bg-black/10 p-4"><div className="flex justify-between text-sm text-white/80"><span>↗ Custo total</span><b className="text-white">{brl(totalCost)}</b></div><div className="mt-2 flex justify-between text-sm text-white/80"><span>$ Lucro estimado</span><b className="text-emerald-300">{brl(estimatedProfit)}</b></div><div className="mt-4 flex items-center justify-between border-t border-white/20 pt-4"><b>Total da venda</b><b className="text-2xl text-[#ff6b35]">{brl(totalSale)}</b></div></div>
-      {assignedCustomer && <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"><UserPlus className="size-4"/> Pedido vinculado a <b>{assignedCustomer.name}</b></div>}
-      <div className="grid gap-2 sm:grid-cols-3"><Button onClick={onPrint} variant="outline" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Printer/> Imprimir orçamento</Button><Button onClick={onAddToCustomer} variant="outline" className="border-[#ff8358]/50 bg-[#ff6b35]/10 text-[#ff9b77] hover:bg-[#ff6b35]/20 hover:text-white"><UserPlus/> {assignedCustomer ? 'Trocar cliente' : 'Adicionar ao cliente'}</Button><Button onClick={onFinalize} disabled={finalizing} className="bg-[#ff6b35] text-white shadow-lg shadow-[#ff6b35]/20 hover:bg-[#e85c2b]"><CheckCircle2/> {finalizing ? 'Salvando...' : 'Finalizar pedido'}</Button></div>
+      {assignedCustomer && <div className="flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"><UserPlus className="size-4"/> Pacote <b>{packageName || 'sem nome'}</b> vinculado a <b>{assignedCustomer.name}</b></div>}
+      <div className="grid gap-2 sm:grid-cols-3"><Button onClick={onPrint} variant="outline" className="border-slate-600 bg-transparent text-white hover:bg-white/10"><Printer/> Imprimir orçamento</Button><Button onClick={onAddToCustomer} variant="outline" className="border-[#ff8358]/50 bg-[#ff6b35]/10 text-[#ff9b77] hover:bg-[#ff6b35]/20 hover:text-white"><UserPlus/> {assignedCustomer ? 'Editar pacote / cliente' : 'Adicionar ao cliente'}</Button><Button onClick={onFinalize} disabled={finalizing} className="bg-[#ff6b35] text-white shadow-lg shadow-[#ff6b35]/20 hover:bg-[#e85c2b]"><CheckCircle2/> {finalizing ? 'Salvando...' : 'Finalizar pedido'}</Button></div>
       <p className="text-center text-[10px] text-slate-500">“Finalizar pedido” desconta automaticamente as quantidades do estoque.</p></>}
   </DialogContent></Dialog>;
 }

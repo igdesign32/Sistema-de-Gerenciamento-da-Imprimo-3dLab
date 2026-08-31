@@ -3,6 +3,7 @@ import { getChatGPTUser } from '@/app/chatgpt-auth';
 
 type OrderInput = {
   customerId?: string | null;
+  packageName?: string;
   items?: Array<{ partId?: string; quantity?: number; unitPrice?: number; supplies?: Array<{ supplyId?: string; quantity?: number }> }>;
   quote?: { id?: string; client?: string; item?: string; total?: number; quantity?: number; unitPrice?: number; grams?: number; hours?: number; energyRate?: number; machineRate?: number; packaging?: number; fees?: number; margin?: number };
 };
@@ -14,8 +15,12 @@ type StoredOrderItem = { inventory_item_id: string | null; quantity: number };
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT o.id, o.customer_id AS customerId, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(CASE WHEN oi.item_name LIKE 'Insumo: %' THEN 0 ELSE oi.quantity END), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'waiting_queue' THEN 'Aguardando fila' WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC`).all();
-  return Response.json(result.results);
+  const result = await env.DB.prepare(`SELECT o.id, o.customer_id AS customerId, COALESCE(c.name, q.customer_name, 'Venda sem cliente') AS customer, COALESCE(NULLIF(o.notes, ''), 'Pedido sem nome') AS packageName, COALESCE(GROUP_CONCAT(oi.item_name, ', '), q.item_name, 'Sem itens') AS items, COALESCE(SUM(CASE WHEN oi.item_name LIKE 'Insumo: %' THEN 0 ELSE oi.quantity END), 1) AS quantity, o.total_price AS total, o.total_cost AS cost, o.estimated_profit AS profit, CASE o.status WHEN 'waiting_queue' THEN 'Aguardando fila' WHEN 'ready' THEN 'Finalizado' WHEN 'delivered' THEN 'Finalizado' WHEN 'cancelled' THEN 'Cancelado' ELSE 'Em andamento' END AS status, strftime('%d/%m/%Y', o.created_at, 'unixepoch') AS createdAt, COALESCE((SELECT json_group_array(json_object('name', detail.item_name, 'quantity', detail.quantity, 'unitPrice', detail.unit_price, 'subtotal', detail.subtotal)) FROM order_items detail WHERE detail.order_id = o.id), '[]') AS itemDetailsJson FROM orders o LEFT JOIN customers c ON c.id = o.customer_id LEFT JOIN quotes q ON q.id = o.quote_id LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY o.id ORDER BY o.created_at DESC`).all<Record<string, unknown>>();
+  const rows = result.results.map(row => {
+    try { return { ...row, itemDetails: JSON.parse(String(row.itemDetailsJson ?? '[]')) }; }
+    catch { return { ...row, itemDetails: [] }; }
+  }).map(({ itemDetailsJson: _itemDetailsJson, ...row }) => row);
+  return Response.json(rows);
 }
 
 export async function PUT(request: Request) {
@@ -114,6 +119,7 @@ export async function POST(request: Request) {
   if (!items.length || items.some(item => !item.partId || Number(item.quantity) <= 0 || Number(item.unitPrice) < 0)) return Response.json({ error: 'O carrinho contém itens inválidos' }, { status: 400 });
 
   const customerId = body.customerId || null;
+  const packageName = String(body.packageName ?? '').trim() || 'Venda sem nome';
   if (customerId) {
     const customer = await env.DB.prepare(`SELECT id FROM customers WHERE id = ? AND active = 1`).bind(customerId).first();
     if (!customer) return Response.json({ error: 'Cliente não encontrado' }, { status: 404 });
@@ -149,7 +155,7 @@ export async function POST(request: Request) {
   const totalCost = partsCost + suppliesCost;
   const estimatedProfit = totalPrice - totalCost;
   const statements = [
-    env.DB.prepare(`INSERT INTO orders (id, customer_id, status, total_price, total_cost, estimated_profit, created_at, updated_at) VALUES (?, ?, 'ready', ?, ?, ?, unixepoch(), unixepoch())`).bind(orderId, customerId, totalPrice, totalCost, estimatedProfit),
+    env.DB.prepare(`INSERT INTO orders (id, customer_id, status, total_price, total_cost, estimated_profit, notes, created_at, updated_at) VALUES (?, ?, 'ready', ?, ?, ?, ?, unixepoch(), unixepoch())`).bind(orderId, customerId, totalPrice, totalCost, estimatedProfit, packageName),
   ];
 
   items.forEach((item, index) => {
