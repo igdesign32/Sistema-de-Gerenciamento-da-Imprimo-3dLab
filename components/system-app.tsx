@@ -115,7 +115,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
         <Button onClick={() => setQuoteOpen(true)} size="icon" aria-label="Novo orçamento" className="ml-auto bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Plus /></Button>
       </header>
       <div className="mx-auto max-w-[1500px] p-4 sm:p-7">
-        {view === 'Visão geral' ? <Dashboard onNavigate={selectView} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => { setEditingQuote(null); setQuoteOpen(true); }} onEditQuote={quote => { setEditingQuote(quote); setQuoteOpen(true); }} onDeleteQuote={deleteQuote} onConvertQuote={convertQuoteToOrder} onCalculatorQuoteSaved={saveCalculatorQuote} user={user} />}
+        {view === 'Visão geral' ? <Dashboard onNavigate={selectView} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => { setEditingQuote(null); setQuoteOpen(true); }} onEditQuote={quote => { setEditingQuote(quote); setQuoteOpen(true); }} onDeleteQuote={deleteQuote} onConvertQuote={convertQuoteToOrder} onCalculatorQuoteSaved={saveCalculatorQuote} onNavigate={selectView} user={user} />}
       </div>
     </main>
     <QuoteDialog open={quoteOpen} onOpenChange={open => { setQuoteOpen(open); if (!open) setEditingQuote(null); }} onSave={saveQuote} onPay={payQuote} onPrint={quote => { setQuoteOpen(false); setEditingQuote(null); setQuoteEditor(quote); }} initialQuote={editingQuote} sequence={1053 + quotes.length - seedQuotes.length} />
@@ -177,11 +177,11 @@ const moduleData: Record<Exclude<View, 'Visão geral' | 'Calculadora' | 'Orçame
   Financeiro: { title: 'Financeiro de agosto', detail: 'Receitas, custos e resultado operacional', headers: ['Lançamento', 'Categoria', 'Vencimento', 'Forma', 'Valor', 'Situação'], rows: [['Pedido #1048', 'Receita de venda', '29 ago', 'PIX', 'R$ 1.480,00', 'A receber'], ['Fornecedor 3D Fila', 'Material', '30 ago', 'Boleto', '- R$ 820,00', 'Agendado'], ['Pedido #1046', 'Receita de venda', '28 ago', 'Cartão', 'R$ 295,00', 'Recebido'], ['Energia elétrica', 'Custo fixo', '05 set', 'Débito', '- R$ 486,00', 'Agendado']], action: 'Novo lançamento' },
 };
 
-function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, onConvertQuote, onCalculatorQuoteSaved, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; onEditQuote: (quote: Quote) => void; onDeleteQuote: (quote: Quote) => void; onConvertQuote: (quote: Quote) => void; onCalculatorQuoteSaved: (quote: CalculatorQuote) => void; user: { name: string; email: string } }) {
+function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, onConvertQuote, onCalculatorQuoteSaved, onNavigate, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; onEditQuote: (quote: Quote) => void; onDeleteQuote: (quote: Quote) => void; onConvertQuote: (quote: Quote) => void; onCalculatorQuoteSaved: (quote: CalculatorQuote) => void; onNavigate: (view: View) => void; user: { name: string; email: string } }) {
   if (view === 'Calculadora') return <CalculatorView onQuoteSaved={onCalculatorQuoteSaved}/>;
   if (view === 'Orçamentos') return <QuotesView quotes={quotes} onNewQuote={onNewQuote} onEdit={onEditQuote} onDelete={onDeleteQuote} onConvert={onConvertQuote}/>;
   if (view === 'Pedidos') return <OrdersView />;
-  if (view === 'Estoque') return <FinishedParts />;
+  if (view === 'Estoque') return <FinishedParts onNavigate={onNavigate} />;
   if (view === 'Clientes') return <CustomersView />;
   if (view === 'Financeiro') return <FinanceView />;
   if (view === 'Configurações') return <SettingsView user={user} />;
@@ -310,7 +310,7 @@ type Customer = { id: string; name: string; phone: string; email: string };
 type Supply = { id: string; name: string; type: string; quantity: number; unit: string; unitCost: number; supplier: string };
 type SupplySaveInput = Supply & { restockQuantity?: number };
 
-function FinishedParts() {
+function FinishedParts({ onNavigate }: { onNavigate: (view: View) => void }) {
   const [inventorySection, setInventorySection] = useState<'parts' | 'supplies'>('parts');
   const [parts, setParts] = useState<FinishedPart[]>([]);
   const [loadingParts, setLoadingParts] = useState(true);
@@ -369,25 +369,33 @@ function FinishedParts() {
     });
     setCartOpen(true);
   };
-  const finalizeSale = async () => {
+  const finalizeSale = async (customerOverride?: Customer, navigateToOrders = false) => {
     setFinalizing(true);
     try {
-      const response = await fetch('/api/orders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ customerId: assignedCustomer?.id ?? null, packageName, items: cart }) });
+      const response = await fetch('/api/orders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ customerId: customerOverride?.id ?? assignedCustomer?.id ?? null, packageName, items: cart }) });
       const result = await response.json() as { id?: string; error?: string };
       if (!response.ok) throw new Error(result.error || 'Não foi possível finalizar o pedido');
       setCart([]);
       setAssignedCustomer(null);
       setPackageName('');
       setCartOpen(false);
+      setCustomerOpen(false);
       setDataNotice(`${result.id} salvo. Estoque, pedido e financeiro atualizados.`);
-      await loadParts();
-    } catch (error) { setDataNotice(error instanceof Error ? error.message : 'Não foi possível finalizar o pedido.'); }
+      if (navigateToOrders) onNavigate('Pedidos');
+      else await loadParts();
+    } catch (error) {
+      setDataNotice(error instanceof Error ? error.message : 'Não foi possível finalizar o pedido.');
+      throw error;
+    }
     finally { setFinalizing(false); }
   };
   const openPackageNaming = () => { setCartOpen(false); setPackageOpen(true); };
   const confirmPackageName = (name: string) => { setPackageName(name); setPackageOpen(false); setCustomerOpen(true); };
   const openQuoteEditor = () => { setCartOpen(false); setQuoteEditorOpen(true); };
-  const assignCustomer = (customer: Customer) => { setAssignedCustomer(customer); setCustomerOpen(false); setCartOpen(true); };
+  const assignCustomer = async (customer: Customer) => {
+    setAssignedCustomer(customer);
+    await finalizeSale(customer, true);
+  };
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
   if (inventorySection === 'supplies') return <SuppliesView onSelectParts={() => setInventorySection('parts')} />;
@@ -431,7 +439,7 @@ function FinishedParts() {
       </table></div>
     </Card>
     <PieceDialog key={editing?.id ?? 'new'} open={pieceOpen} onOpenChange={setPieceOpen} initial={editing} onSave={savePart}/>
-    <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={finalizeSale} onAddToCustomer={openPackageNaming} onPrint={openQuoteEditor} assignedCustomer={assignedCustomer} packageName={packageName} finalizing={finalizing}/>
+    <SalesCartDialog open={cartOpen} onOpenChange={setCartOpen} parts={parts} cart={cart} onCartChange={setCart} onFinalize={() => { void finalizeSale().catch(() => undefined); }} onAddToCustomer={openPackageNaming} onPrint={openQuoteEditor} assignedCustomer={assignedCustomer} packageName={packageName} finalizing={finalizing}/>
     <PackageNameDialog open={packageOpen} onOpenChange={open => { setPackageOpen(open); if (!open) setCartOpen(true); }} initialName={packageName} itemCount={cartCount} total={cart.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0)} onConfirm={confirmPackageName}/>
     <CustomerOrderDialog open={customerOpen} onOpenChange={open => { setCustomerOpen(open); if (!open) setCartOpen(true); }} onSelect={assignCustomer}/>
     {quoteEditorOpen && <QuoteEditor parts={parts} cart={cart} customer={assignedCustomer} onClose={() => setQuoteEditorOpen(false)}/>}
@@ -617,7 +625,7 @@ function EditableText({ children, className = '' }: { children: React.ReactNode;
   return <span contentEditable suppressContentEditableWarning className={`rounded-sm outline-none transition hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-[#0068ff]/30 ${className}`}>{children}</span>;
 }
 
-function CustomerOrderDialog({ open, onOpenChange, onSelect }: { open: boolean; onOpenChange: (open: boolean) => void; onSelect: (customer: Customer) => void }) {
+function CustomerOrderDialog({ open, onOpenChange, onSelect }: { open: boolean; onOpenChange: (open: boolean) => void; onSelect: (customer: Customer) => void | Promise<void> }) {
   const [mode, setMode] = useState<'existing' | 'new'>('existing');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selected, setSelected] = useState('');
@@ -641,13 +649,13 @@ function CustomerOrderDialog({ open, onOpenChange, onSelect }: { open: boolean; 
     try {
       if (mode === 'existing') {
         const customer = customers.find(item => item.id === selected);
-        if (customer) onSelect(customer);
+        if (customer) await onSelect(customer);
       } else {
         const response = await fetch('/api/customers', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, phone, email }) });
         const customer = await response.json() as Customer & { error?: string };
         if (!response.ok) throw new Error(customer.error || 'Não foi possível criar o cliente');
         setCustomers(current => [...current, customer].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')));
-        onSelect(customer);
+        await onSelect(customer);
       }
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'Não foi possível vincular o cliente.'); }
     finally { setSaving(false); }
