@@ -11,7 +11,7 @@ type Period = 'today' | '7d' | '30d' | 'month' | 'year' | 'custom';
 type FinanceTab = 'income' | 'expense' | 'cashflow' | 'charts';
 type FinanceTransaction = {
   id: string; orderId: string; type: 'Receita' | 'Despesa'; category: string; product: string; amount: number;
-  quantity: number; unitValue: number; paymentMethod: string; status: string; dueDate: string; account: string; notes: string;
+  quantity: number; unitValue: number; paymentMethod: string; dueDate: string; account: string; notes: string;
 };
 type InventoryPart = { id: string; sku: string; name: string; price: number };
 
@@ -35,7 +35,6 @@ export function FinanceView() {
   const [tab, setTab] = useState<FinanceTab>('income');
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('');
   const [accountFilter, setAccountFilter] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -48,7 +47,6 @@ export function FinanceView() {
   const [unitValue, setUnitValue] = useState(0);
   const [account, setAccount] = useState(accounts[0]);
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
-  const [status, setStatus] = useState('Pago');
   const [notes, setNotes] = useState('');
 
   const loadData = async () => {
@@ -80,7 +78,7 @@ export function FinanceView() {
   const margin = income > 0 ? profit / income * 100 : 0;
   const revenueRows = periodTransactions.filter(item => item.type === 'Receita').filter(item => {
     const text = `${item.product} ${item.category} ${item.paymentMethod} ${item.account}`.toLocaleLowerCase('pt-BR');
-    return text.includes(query.toLocaleLowerCase('pt-BR')) && (!categoryFilter || item.category === categoryFilter) && (!statusFilter || item.status === statusFilter) && (!paymentFilter || item.paymentMethod === paymentFilter) && (!accountFilter || item.account === accountFilter);
+    return text.includes(query.toLocaleLowerCase('pt-BR')) && (!categoryFilter || item.category === categoryFilter) && (!paymentFilter || item.paymentMethod === paymentFilter) && (!accountFilter || item.account === accountFilter);
   });
 
   const choosePart = (id: string) => {
@@ -91,13 +89,13 @@ export function FinanceView() {
   const resetForm = () => { setEditingId(null); setEditOpen(false); setInventoryItemId(''); setProduct(''); setQuantity(1); setUnitValue(0); setNotes(''); setDueDate(localDate()); };
   const editTransaction = (item: FinanceTransaction) => {
     setEditingId(item.id); setDueDate(item.dueDate); setProduct(item.product); setCategory(item.category); setQuantity(item.quantity); setUnitValue(item.unitValue);
-    setAccount(item.account); setPaymentMethod(item.paymentMethod); setStatus(item.status); setNotes(item.notes); setEditOpen(true);
+    setAccount(item.account); setPaymentMethod(item.paymentMethod); setNotes(item.notes); setEditOpen(true);
   };
   const saveRevenue = async () => {
     if (!product.trim() || quantity <= 0 || unitValue <= 0) { setNotice('Informe o produto, a quantidade e o valor da receita.'); return; }
     setSaving(true); setNotice('');
     try {
-      const response = await fetch('/api/transactions', { method: editingId ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: editingId, type: 'income', dueDate, inventoryItemId, product, category, quantity, unitValue, account, paymentMethod, status, notes }) });
+      const response = await fetch('/api/transactions', { method: editingId ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: editingId, type: 'income', dueDate, inventoryItemId, product, category, quantity, unitValue, account, paymentMethod, status: 'Pago', notes }) });
       const saved = await response.json() as FinanceTransaction & { error?: string };
       if (!response.ok) throw new Error(saved.error || 'Não foi possível salvar a receita.');
       setTransactions(current => editingId ? current.map(item => item.id === saved.id ? saved : item) : [saved, ...current]);
@@ -143,14 +141,13 @@ export function FinanceView() {
         <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm"><span className="text-xs text-emerald-700">Total da receita</span><p className="font-bold text-emerald-700">{brl(quantity * unitValue)}</p></div>
         <FinanceField label="Conta"><select value={account} onChange={event => setAccount(event.target.value)} className={fieldClass}>{accounts.map(item => <option key={item}>{item}</option>)}</select></FinanceField>
         <FinanceField label="Forma de pagamento"><select value={paymentMethod} onChange={event => setPaymentMethod(event.target.value)} className={fieldClass}>{paymentMethods.map(item => <option key={item}>{item}</option>)}</select></FinanceField>
-        <FinanceField label="Status"><select value={status} onChange={event => setStatus(event.target.value)} className={fieldClass}><option>Pago</option><option>Em aberto</option></select></FinanceField>
         <FinanceField label="Observação (opcional)"><Input value={notes} onChange={event => setNotes(event.target.value)} placeholder="Cliente, detalhes..."/></FinanceField>
         <Button onClick={() => void saveRevenue()} disabled={saving} className="w-full bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><TrendingUp/>{saving ? 'Salvando...' : editingId ? 'Atualizar Receita' : 'Lançar Receita'}</Button>
         {editingId && <Button variant="outline" onClick={resetForm} className="w-full">Cancelar edição</Button>}
       </CardContent></Card>
       <Card className="min-w-0 border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader><CardTitle>Receitas lançadas</CardTitle><p className="text-xs text-slate-500">Tudo que entrou de dinheiro no período selecionado.</p></CardHeader><CardContent className="px-0">
-        <div className="grid gap-2 border-y bg-slate-50 p-3 md:grid-cols-2 xl:grid-cols-5"><div className="relative xl:col-span-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"/><Input aria-label="Buscar receitas por produto" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar produto..." className="pl-9"/></div><FilterSelect value={categoryFilter} onChange={setCategoryFilter} first="Todas categorias" options={categories}/><FilterSelect value={statusFilter} onChange={setStatusFilter} first="Todos status" options={['Pago','Em aberto']}/><FilterSelect value={paymentFilter} onChange={setPaymentFilter} first="Todo pagamento" options={paymentMethods}/><FilterSelect value={accountFilter} onChange={setAccountFilter} first="Todas contas" options={accounts}/></div>
-        <div className="overflow-x-auto"><table className="w-full min-w-[940px] text-left text-xs"><thead className="bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Data','Produto','Categoria','Qtd.','V. unit.','Total','Conta','Pagamento','Status','Ações'].map(item => <th key={item} className="px-3 py-3 font-semibold">{item}</th>)}</tr></thead><tbody>{revenueRows.map(item => <tr key={item.id} className="border-t hover:bg-slate-50"><td className="whitespace-nowrap px-3 py-3 font-medium">{item.dueDate.split('-').reverse().join('/')}</td><td className="max-w-52 px-3 py-3"><p className="font-semibold">{item.product}</p>{item.notes && <p className="mt-1 truncate text-[10px] text-slate-500">{item.notes}</p>}</td><td className="px-3 py-3"><span className="rounded-full border px-2 py-1 text-[10px]">{item.category}</span></td><td className="px-3 py-3">{item.quantity}</td><td className="px-3 py-3">{brl(item.unitValue)}</td><td className="px-3 py-3 font-bold text-emerald-600">{brl(item.amount)}</td><td className="px-3 py-3">{item.account}</td><td className="px-3 py-3">{item.paymentMethod}</td><td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${item.status === 'Pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{item.status}</span></td><td className="px-3 py-3"><div className="flex items-center gap-1"><Button variant="ghost" size="icon" aria-label={`Editar ${item.product}`} onClick={() => editTransaction(item)} className="text-[#0068ff]"><Pencil className="size-4"/></Button><Button variant="ghost" size="icon" aria-label={`Excluir ${item.product}`} onClick={() => void deleteTransaction(item)} className="text-red-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="size-4"/></Button></div></td></tr>)}</tbody></table></div>
+        <div className="grid gap-2 border-y bg-slate-50 p-3 md:grid-cols-2 xl:grid-cols-4"><div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"/><Input aria-label="Buscar receitas por produto" value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar produto..." className="pl-9"/></div><FilterSelect value={categoryFilter} onChange={setCategoryFilter} first="Todas categorias" options={categories}/><FilterSelect value={paymentFilter} onChange={setPaymentFilter} first="Todo pagamento" options={paymentMethods}/><FilterSelect value={accountFilter} onChange={setAccountFilter} first="Todas contas" options={accounts}/></div>
+        <div className="overflow-x-auto"><table className="w-full min-w-[840px] text-left text-xs"><thead className="bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500"><tr>{['Data','Produto','Categoria','Qtd.','V. unit.','Total','Conta','Pagamento','Ações'].map(item => <th key={item} className="px-3 py-3 font-semibold">{item}</th>)}</tr></thead><tbody>{revenueRows.map(item => <tr key={item.id} className="border-t hover:bg-slate-50"><td className="whitespace-nowrap px-3 py-3 font-medium">{item.dueDate.split('-').reverse().join('/')}</td><td className="max-w-52 px-3 py-3"><p className="font-semibold">{item.product}</p>{item.notes && <p className="mt-1 truncate text-[10px] text-slate-500">{item.notes}</p>}</td><td className="px-3 py-3"><span className="rounded-full border px-2 py-1 text-[10px]">{item.category}</span></td><td className="px-3 py-3">{item.quantity}</td><td className="px-3 py-3">{brl(item.unitValue)}</td><td className="px-3 py-3 font-bold text-emerald-600">{brl(item.amount)}</td><td className="px-3 py-3">{item.account}</td><td className="px-3 py-3">{item.paymentMethod}</td><td className="px-3 py-3"><div className="flex items-center gap-1"><Button variant="ghost" size="icon" aria-label={`Editar ${item.product}`} onClick={() => editTransaction(item)} className="text-[#0068ff]"><Pencil className="size-4"/></Button><Button variant="ghost" size="icon" aria-label={`Excluir ${item.product}`} onClick={() => void deleteTransaction(item)} className="text-red-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="size-4"/></Button></div></td></tr>)}</tbody></table></div>
         {loading && <p className="p-8 text-center text-sm text-slate-400">Carregando receitas...</p>}{!loading && revenueRows.length === 0 && <p className="p-8 text-center text-sm text-slate-400">Nenhuma receita encontrada neste período.</p>}
       </CardContent></Card>
     </div> : <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardContent className="p-10 text-center"><p className="font-semibold">{tabs.find(item => item[0] === tab)?.[2]}</p><p className="mt-2 text-sm text-slate-500">Esta área está preparada e será detalhada na próxima etapa.</p></CardContent></Card>}
@@ -164,7 +161,6 @@ export function FinanceView() {
       <EditField label="Valor total (R$)"><Input value={brl(quantity * unitValue)} readOnly className={`${editFieldClass} cursor-not-allowed text-slate-300`}/></EditField>
       <EditField label="Conta"><select value={account} onChange={event => setAccount(event.target.value)} className={editFieldClass}>{accounts.map(item => <option key={item}>{item}</option>)}</select></EditField>
       <EditField label="Forma de pagamento"><select value={paymentMethod} onChange={event => setPaymentMethod(event.target.value)} className={editFieldClass}>{paymentMethods.map(item => <option key={item}>{item}</option>)}</select></EditField>
-      <EditField label="Status" wide><select value={status} onChange={event => setStatus(event.target.value)} className={editFieldClass}><option>Pago</option><option>Em aberto</option></select></EditField>
     </div><DialogFooter className="border-t border-blue-300/30 bg-[#124787] pt-4 sm:justify-between"><Button variant="destructive" className="bg-red-600 text-white hover:bg-red-700 hover:text-white" onClick={() => { const item = transactions.find(transaction => transaction.id === editingId); if (item) void deleteTransaction(item); }}><Trash2/> Excluir</Button><div className="flex gap-2"><Button variant="outline" onClick={resetForm} className="border-blue-200/50 bg-transparent text-white hover:bg-white/10 hover:text-white">Cancelar</Button><Button onClick={() => void saveRevenue()} disabled={saving} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]"><Check/> {saving ? 'Salvando...' : 'Salvar Alterações'}</Button></div></DialogFooter></DialogContent></Dialog>
     {notice && <output className={`block rounded-lg px-4 py-3 text-sm ${notice.includes('sucesso') ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{notice}</output>}
   </div>;
