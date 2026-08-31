@@ -20,10 +20,29 @@ export async function POST(request: Request) {
   const base = materialCost + energyCost + machineCost + Number(body.packaging);
   const feesCost = base * Number(body.fees) / 100;
   await env.DB.prepare(`INSERT INTO quotes (id, customer_name, item_name, status, material_type, material_grams, material_cost, print_hours, energy_rate, energy_cost, machine_hourly_rate, machine_cost, packaging_cost, finishing_cost, fees_percent, fees_cost, margin_percent, total_price, notes, created_by, created_at, updated_at) VALUES (?, ?, ?, 'draft', 'PLA', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch())`)
-    .bind(String(body.id), String(body.client), String(body.item), Number(body.grams), materialCost, Number(body.hours), Number(body.energyRate), energyCost, Number(body.machineRate), machineCost, Number(body.packaging), Number(body.fees), feesCost, Number(body.margin), Number(body.total), body.details ? JSON.stringify(body.details) : null, user.userId).run();
+    .bind(String(body.id), String(body.client), String(body.item), Number(body.grams), materialCost, Number(body.hours), Number(body.energyRate), energyCost, Number(body.machineRate), machineCost, Number(body.packaging), Number(body.fees), feesCost, Number(body.margin), Number(body.total), body.notes ? String(body.notes) : null, user.userId).run();
   await env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'quote', ?, 'created', ?, unixepoch())`)
     .bind(crypto.randomUUID(), user.userId, String(body.id), JSON.stringify(body)).run();
   return Response.json({ ok: true, id: body.id }, { status: 201 });
+}
+
+export async function PUT(request: Request) {
+  const user = await getChatGPTUser();
+  if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
+  const body = await request.json() as Record<string, string | number>;
+  const required = ['id', 'client', 'item', 'grams', 'hours', 'total'];
+  if (required.some(key => body[key] === undefined || body[key] === '')) return Response.json({ error: 'Campos obrigatórios ausentes' }, { status: 400 });
+  const materialCost = Number(body.grams) * 0.095;
+  const energyCost = Number(body.hours) * Number(body.energyRate);
+  const machineCost = Number(body.hours) * Number(body.machineRate);
+  const base = materialCost + energyCost + machineCost + Number(body.packaging);
+  const feesCost = base * Number(body.fees) / 100;
+  const result = await env.DB.prepare(`UPDATE quotes SET customer_name = ?, item_name = ?, material_grams = ?, material_cost = ?, print_hours = ?, energy_rate = ?, energy_cost = ?, machine_hourly_rate = ?, machine_cost = ?, packaging_cost = ?, fees_percent = ?, fees_cost = ?, margin_percent = ?, total_price = ?, notes = ?, updated_at = unixepoch() WHERE id = ?`)
+    .bind(String(body.client), String(body.item), Number(body.grams), materialCost, Number(body.hours), Number(body.energyRate), energyCost, Number(body.machineRate), machineCost, Number(body.packaging), Number(body.fees), feesCost, Number(body.margin), Number(body.total), body.notes ? String(body.notes) : null, String(body.id)).run();
+  if (!result.meta.changes) return Response.json({ error: 'Orçamento não encontrado' }, { status: 404 });
+  await env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'quote', ?, 'updated', ?, unixepoch())`)
+    .bind(crypto.randomUUID(), user.userId, String(body.id), JSON.stringify(body)).run();
+  return Response.json({ ok: true, id: body.id });
 }
 
 export async function DELETE(request: Request) {
