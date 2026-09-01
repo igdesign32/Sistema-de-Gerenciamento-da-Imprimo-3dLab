@@ -16,6 +16,12 @@ export const metadata: Metadata = {
   title: 'Imprimo3DLab — Gerenciamento',
   description: 'Orçamentos, pedidos, produção, estoque e financeiro em um só lugar.',
   metadataBase: new URL(process.env.SITE_URL ?? 'http://localhost:3000'),
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [{ url: '/favicon-32.png', sizes: '32x32', type: 'image/png' }],
+    shortcut: '/favicon-32.png',
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+  },
   openGraph: {
     title: 'Imprimo3DLab — Gerenciamento',
     description: 'Gerenciamento inteligente para impressão 3D: do orçamento à entrega.',
