@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:workers';
 import { getChatGPTUser } from '@/app/chatgpt-auth';
+import { businessDateUnix } from '@/lib/business-date';
 
 type PaidQuoteInput = {
   id?: string;
@@ -46,14 +47,15 @@ export async function POST(request: Request) {
   const incomeDescription = JSON.stringify({ product: `Orçamento ${id} — ${item}`, quantity: 1, account: 'Conta Corrente', notes: `Cliente: ${client}` });
   const expenseDescription = JSON.stringify({ product: `Custo de produção — ${item}`, quantity: 1, account: 'Conta Corrente', notes: `Gerado automaticamente pelo orçamento ${id}`, expenseKind: 'Variável' });
   const storedNotes = JSON.stringify({ notes: body.notes?.trim() || '', details: body.details ?? null });
+  const dueAt = businessDateUnix();
 
   await env.DB.batch([
     env.DB.prepare(`INSERT INTO quotes (id, customer_name, item_name, status, material_type, material_grams, material_cost, print_hours, energy_rate, energy_cost, machine_hourly_rate, machine_cost, packaging_cost, finishing_cost, fees_percent, fees_cost, margin_percent, total_price, notes, created_by, created_at, updated_at) VALUES (?, ?, ?, 'paid', 'PLA', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, unixepoch(), unixepoch()) ON CONFLICT(id) DO UPDATE SET customer_name = excluded.customer_name, item_name = excluded.item_name, status = 'paid', material_grams = excluded.material_grams, material_cost = excluded.material_cost, print_hours = excluded.print_hours, energy_rate = excluded.energy_rate, energy_cost = excluded.energy_cost, machine_hourly_rate = excluded.machine_hourly_rate, machine_cost = excluded.machine_cost, packaging_cost = excluded.packaging_cost, fees_percent = excluded.fees_percent, fees_cost = excluded.fees_cost, margin_percent = excluded.margin_percent, total_price = excluded.total_price, notes = excluded.notes, updated_at = unixepoch()`)
       .bind(id, client, item, grams, materialCost, hours, energyRate, energyCost, machineRate, machineCost, packaging, fees, feesCost, margin, total, storedNotes, user.userId),
-    env.DB.prepare(`INSERT INTO transactions (id, order_id, type, category, description, amount, due_at, paid_at, payment_method, created_by, created_at, updated_at) VALUES (?, NULL, 'income', 'Venda de orçamento', ?, ?, unixepoch(), unixepoch(), 'A definir', ?, unixepoch(), unixepoch()) ON CONFLICT(id) DO UPDATE SET description = excluded.description, amount = excluded.amount, due_at = unixepoch(), paid_at = unixepoch(), updated_at = unixepoch()`)
-      .bind(incomeId, incomeDescription, total, user.userId),
-    env.DB.prepare(`INSERT INTO transactions (id, order_id, type, category, description, amount, due_at, paid_at, payment_method, created_by, created_at, updated_at) VALUES (?, NULL, 'expense', 'Custo de produção', ?, ?, unixepoch(), unixepoch(), 'A definir', ?, unixepoch(), unixepoch()) ON CONFLICT(id) DO UPDATE SET description = excluded.description, amount = excluded.amount, due_at = unixepoch(), paid_at = unixepoch(), updated_at = unixepoch()`)
-      .bind(expenseId, expenseDescription, totalCost, user.userId),
+    env.DB.prepare(`INSERT INTO transactions (id, order_id, type, category, description, amount, due_at, paid_at, payment_method, created_by, created_at, updated_at) VALUES (?, NULL, 'income', 'Venda de orçamento', ?, ?, ?, unixepoch(), 'A definir', ?, unixepoch(), unixepoch()) ON CONFLICT(id) DO UPDATE SET description = excluded.description, amount = excluded.amount, due_at = excluded.due_at, paid_at = unixepoch(), updated_at = unixepoch()`)
+      .bind(incomeId, incomeDescription, total, dueAt, user.userId),
+    env.DB.prepare(`INSERT INTO transactions (id, order_id, type, category, description, amount, due_at, paid_at, payment_method, created_by, created_at, updated_at) VALUES (?, NULL, 'expense', 'Custo de produção', ?, ?, ?, unixepoch(), 'A definir', ?, unixepoch(), unixepoch()) ON CONFLICT(id) DO UPDATE SET description = excluded.description, amount = excluded.amount, due_at = excluded.due_at, paid_at = unixepoch(), updated_at = unixepoch()`)
+      .bind(expenseId, expenseDescription, totalCost, dueAt, user.userId),
     env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'quote', ?, 'paid', ?, unixepoch())`)
       .bind(crypto.randomUUID(), user.userId, id, JSON.stringify({ total, totalCost, incomeId, expenseId })),
   ]);

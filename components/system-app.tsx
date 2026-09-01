@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import {
   Boxes, Calculator, CheckCircle2, CircleDollarSign, Clock3,
   FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Pencil, Plus, Search,
-  MessageCircle, Minus, Printer, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
+  Handshake, MessageCircle, Minus, Printer, RotateCcw, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,12 +17,12 @@ import { CalculatorView, type CalculatorQuote, type CalculatorQuoteSupply } from
 import { FinanceView } from '@/components/finance-view';
 import { defaultPricingDefaults, type PricingDefaults } from '@/lib/pricing-defaults';
 
-type View = 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Pedidos' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
+type View = 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Pedidos' | 'Consignados' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
 type Quote = { id: string; client: string; item: string; date: string; total: string; status: string; quantity?: number; unitPrice?: number; grams?: number; hours?: number; timeHours?: number; timeMinutes?: number; energyRate?: number; machineRate?: number; packaging?: number; fees?: number; margin?: number; notes?: string; supplies?: CalculatorQuoteSupply[] };
 
 const nav: [React.ElementType, View][] = [
   [LayoutDashboard, 'Visão geral'], [Calculator, 'Calculadora'], [FileText, 'Orçamentos'], [ShoppingBag, 'Pedidos'],
-  [Boxes, 'Estoque'], [Users, 'Clientes'],
+  [Handshake, 'Consignados'], [Boxes, 'Estoque'], [Users, 'Clientes'],
   [CircleDollarSign, 'Financeiro'], [Settings, 'Configurações'],
 ];
 const brl = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
@@ -144,17 +144,21 @@ function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; us
     const now = new Date(); now.setHours(23, 59, 59, 999);
     const lastThirtyDays = new Date(now); lastThirtyDays.setDate(lastThirtyDays.getDate() - 29); lastThirtyDays.setHours(0, 0, 0, 0);
     const yearStart = new Date(now.getFullYear(), 0, 1);
+    const weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - (weekStart.getDay() === 0 ? 6 : weekStart.getDay() - 1)); weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6); weekEnd.setHours(23, 59, 59, 999);
     const inRange = (transaction: { dueDate: string }, start: Date) => { const date = new Date(`${transaction.dueDate}T12:00:00`); return date >= start && date <= now; };
     const recent = transactions.filter(transaction => inRange(transaction, lastThirtyDays));
     const revenue = recent.filter(transaction => transaction.type === 'Receita').reduce((sum, transaction) => sum + transaction.amount, 0);
     const expenses = recent.filter(transaction => transaction.type === 'Despesa').reduce((sum, transaction) => sum + transaction.amount, 0);
     const annualRevenue = transactions.filter(transaction => transaction.type === 'Receita' && inRange(transaction, yearStart)).reduce((sum, transaction) => sum + transaction.amount, 0);
+    const weeklyRevenue = transactions.filter(transaction => { const date = new Date(`${transaction.dueDate}T12:00:00`); return transaction.type === 'Receita' && date >= weekStart && date <= weekEnd; }).reduce((sum, transaction) => sum + transaction.amount, 0);
+    const shortDate = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
     const netProfit = revenue - expenses;
-    return { revenue, annualRevenue, netProfit, margin: revenue > 0 ? netProfit / revenue * 100 : 0 };
+    return { revenue, weeklyRevenue, weekLabel: `${shortDate.format(weekStart)} a ${shortDate.format(weekEnd)}`, annualRevenue, netProfit, margin: revenue > 0 ? netProfit / revenue * 100 : 0 };
   }, [transactions]);
   const metrics: Array<[React.ElementType, string, string, string, string]> = [
     [HandCoins, 'Faturamento total', brl(finance.revenue), 'Últimos 30 dias · Financeiro', 'green'],
-    [ShoppingBag, 'Pedidos ativos', '12', '4 entregas nesta semana', 'blue'],
+    [CircleDollarSign, 'Faturamento semanal', brl(finance.weeklyRevenue), `${finance.weekLabel} · Segunda a domingo`, 'blue'],
     [WalletCards, 'Faturamento total anual', brl(finance.annualRevenue), `Ano de ${new Date().getFullYear()}`, 'orange'],
     [TrendingUp, 'Lucro líquido', brl(finance.netProfit), `${finance.margin.toFixed(1)}% de margem · últimos 30 dias`, 'violet'],
   ];
@@ -170,7 +174,7 @@ function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; us
   </>;
 }
 
-const moduleData: Record<Exclude<View, 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Configurações'>, { title: string; detail: string; headers: string[]; rows: string[][]; action: string }> = {
+const moduleData: Record<Exclude<View, 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Consignados' | 'Configurações'>, { title: string; detail: string; headers: string[]; rows: string[][]; action: string }> = {
   Pedidos: { title: '12 pedidos ativos', detail: 'Do orçamento aprovado até a entrega', headers: ['Pedido', 'Cliente', 'Trabalho', 'Responsável', 'Prazo', 'Status'], rows: [['#1048', 'Lumina Arquitetura', 'Maquete residencial', 'Carlos', 'Hoje, 16:00', 'Em produção'], ['#1047', 'Studio Objeto', 'Kit 12 expositores', 'Marina', 'Amanhã', 'Aguardando'], ['#1046', 'Rafael Martins', 'Engrenagem técnica', 'Carlos', '30 ago', 'Acabamento'], ['#1045', 'Clínica Orto+', 'Modelo anatômico', 'Marina', '02 set', 'Aprovado']], action: 'Novo pedido' },
   Estoque: { title: 'Estoque de materiais', detail: 'Filamentos, resinas, peças e embalagens', headers: ['Material', 'Tipo / cor', 'Marca', 'Disponível', 'Custo médio', 'Situação'], rows: [['PLA Branco Neve', 'PLA · Branco', '3D Fila', '420 g', 'R$ 92/kg', 'Estoque baixo'], ['PETG Preto', 'PETG · Preto', 'Voolt3D', '1,8 kg', 'R$ 108/kg', 'Normal'], ['Resina Cinza', 'Standard · Cinza', 'Anycubic', '310 ml', 'R$ 146/L', 'Estoque baixo'], ['PLA Laranja', 'PLA · Laranja', '3D Fila', '2,4 kg', 'R$ 96/kg', 'Normal']], action: 'Entrada de material' },
   Clientes: { title: '86 clientes cadastrados', detail: 'Relacionamento e histórico comercial', headers: ['Cliente', 'Contato', 'Pedidos', 'Último pedido', 'Faturamento', 'Situação'], rows: [['Lumina Arquitetura', '(11) 99945-2231', '14', '28 ago', 'R$ 8.420,00', 'Ativo'], ['Studio Objeto', '(11) 98872-0198', '8', '27 ago', 'R$ 4.180,00', 'Ativo'], ['Clínica Orto+', '(11) 99128-6330', '5', '25 ago', 'R$ 3.750,00', 'Ativo'], ['Rafael Martins', '(11) 98041-7212', '3', '24 ago', 'R$ 860,00', 'Pessoa física']], action: 'Novo cliente' },
@@ -181,12 +185,165 @@ function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, onConver
   if (view === 'Calculadora') return <CalculatorView onQuoteSaved={onCalculatorQuoteSaved}/>;
   if (view === 'Orçamentos') return <QuotesView quotes={quotes} onNewQuote={onNewQuote} onEdit={onEditQuote} onDelete={onDeleteQuote} onConvert={onConvertQuote}/>;
   if (view === 'Pedidos') return <OrdersView />;
+  if (view === 'Consignados') return <ConsignmentsView />;
   if (view === 'Estoque') return <FinishedParts onNavigate={onNavigate} />;
   if (view === 'Clientes') return <CustomersView />;
   if (view === 'Financeiro') return <FinanceView />;
   if (view === 'Configurações') return <SettingsView user={user} />;
   const data = moduleData[view];
   return <ModuleShell title={data.title} detail={data.detail} action={data.action}><DataTable headers={data.headers} rows={data.rows}/>{view === 'Financeiro' && <div className="grid gap-4 border-t bg-slate-50 p-4 sm:grid-cols-3"><Summary label="Receitas" value="R$ 18.740,00" color="text-emerald-600"/><Summary label="Despesas" value="R$ 11.820,00" color="text-red-600"/><Summary label="Resultado" value="R$ 6.920,00" color="text-blue-600"/></div>}</ModuleShell>;
+}
+
+type ConsignmentItem = { inventoryItemId: string; name: string; quantity: number; passedValue: number };
+type Consignment = { id: string; establishment: string; items: string; itemDetails: ConsignmentItem[]; deliveryDate: string; visitDate: string; paid: number | boolean };
+type InventoryPart = { id: string; sku: string; name: string; stock: number; price: number };
+
+const emptyConsignmentForm = () => ({ id: '', establishment: '', itemDetails: [] as ConsignmentItem[], deliveryDate: new Date().toISOString().slice(0, 10), visitDate: '' });
+
+function ConsignmentsView() {
+  const [consignments, setConsignments] = useState<Consignment[]>([]);
+  const [inventory, setInventory] = useState<InventoryPart[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [payingId, setPayingId] = useState('');
+  const [returningItemId, setReturningItemId] = useState('');
+  const [expandedConsignment, setExpandedConsignment] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [error, setError] = useState('');
+  const [form, setForm] = useState(emptyConsignmentForm);
+  const [itemId, setItemId] = useState('');
+  const [itemQuantity, setItemQuantity] = useState(1);
+  const [passedValue, setPassedValue] = useState(0);
+
+  const loadInventory = () => fetch('/api/inventory').then(response => response.ok ? response.json() as Promise<InventoryPart[]> : Promise.reject()).then(setInventory);
+  useEffect(() => { void Promise.all([
+    fetch('/api/consignments').then(response => response.ok ? response.json() as Promise<Consignment[]> : Promise.reject()).then(setConsignments),
+    loadInventory(),
+  ]).catch(() => { setConsignments([]); setInventory([]); }).finally(() => setLoading(false)); }, []);
+
+  const availableStock = (partId: string) => (inventory.find(part => part.id === partId)?.stock ?? 0) + (form.id ? consignments.find(consignment => consignment.id === form.id)?.itemDetails.find(item => item.inventoryItemId === partId)?.quantity ?? 0 : 0);
+  const chooseItem = (nextId: string) => {
+    setItemId(nextId);
+    const part = inventory.find(item => item.id === nextId);
+    setPassedValue(part?.price ?? 0);
+    setItemQuantity(1);
+  };
+  const addItem = () => {
+    const part = inventory.find(item => item.id === itemId);
+    if (!part || itemQuantity <= 0 || passedValue < 0) return setError('Selecione um produto e informe quantidade e valor repassado válidos.');
+    if (itemQuantity > availableStock(part.id)) return setError(`Há somente ${availableStock(part.id)} un. disponíveis de ${part.name}.`);
+    setForm(current => ({ ...current, itemDetails: [...current.itemDetails.filter(item => item.inventoryItemId !== part.id), { inventoryItemId: part.id, name: part.name, quantity: itemQuantity, passedValue }] }));
+    setItemId(''); setItemQuantity(1); setPassedValue(0); setError('');
+  };
+  const openNew = () => { setForm(emptyConsignmentForm()); setItemId(''); setItemQuantity(1); setPassedValue(0); setError(''); setOpen(true); };
+  const openEdit = (consignment: Consignment) => { setForm({ id: consignment.id, establishment: consignment.establishment, itemDetails: consignment.itemDetails, deliveryDate: consignment.deliveryDate, visitDate: consignment.visitDate }); setItemId(''); setItemQuantity(1); setPassedValue(0); setError(''); setOpen(true); };
+
+  const saveConsignment = async () => {
+    if (!form.establishment.trim() || form.itemDetails.length === 0 || !form.deliveryDate || !form.visitDate) {
+      setError('Preencha o estabelecimento, adicione ao menos um item e informe as duas datas.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const wasPaid = Boolean(form.id && consignments.find(item => item.id === form.id)?.paid);
+      const response = await fetch('/api/consignments', { method: form.id ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(form) });
+      const result = await response.json() as Consignment & { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível salvar o consignado.');
+      if (wasPaid) {
+        const paymentResponse = await fetch('/api/consignments/pay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: result.id }) });
+        const paymentResult = await paymentResponse.json() as { error?: string };
+        if (!paymentResponse.ok) throw new Error(paymentResult.error || 'O consignado foi salvo, mas não foi possível atualizar os lançamentos financeiros.');
+      }
+      const savedResult = { ...result, paid: wasPaid };
+      setConsignments(current => form.id ? current.map(item => item.id === savedResult.id ? savedResult : item) : [savedResult, ...current]);
+      await loadInventory();
+      setForm(emptyConsignmentForm());
+      setOpen(false);
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'Não foi possível salvar o consignado.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const togglePayment = async (consignment: Consignment) => {
+    const reversing = Boolean(consignment.paid);
+    setPayingId(consignment.id);
+    setActionError('');
+    try {
+      const response = await fetch(reversing ? `/api/consignments/pay?id=${encodeURIComponent(consignment.id)}` : '/api/consignments/pay', reversing ? { method: 'DELETE' } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: consignment.id }) });
+      const result = await response.json() as { error?: string; paid?: boolean };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível atualizar o pagamento.');
+      setConsignments(current => current.map(item => item.id === consignment.id ? { ...item, paid: Boolean(result.paid) } : item));
+    } catch (problem) {
+      setActionError(problem instanceof Error ? problem.message : 'Não foi possível atualizar o pagamento.');
+    } finally {
+      setPayingId('');
+    }
+  };
+
+  const returnToInventory = async (item: ConsignmentItem) => {
+    if (!form.id) {
+      setForm(current => ({ ...current, itemDetails: current.itemDetails.filter(currentItem => currentItem.inventoryItemId !== item.inventoryItemId) }));
+      return;
+    }
+    if (!window.confirm(`Devolver ${item.quantity} un. de ${item.name} ao estoque?`)) return;
+    setReturningItemId(item.inventoryItemId);
+    setError('');
+    try {
+      const response = await fetch(`/api/consignments?id=${encodeURIComponent(form.id)}&inventoryItemId=${encodeURIComponent(item.inventoryItemId)}`, { method: 'DELETE' });
+      const result = await response.json() as { error?: string; deleted?: boolean; consignment?: Consignment };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível devolver o produto ao estoque.');
+      if (result.deleted) {
+        setConsignments(current => current.filter(consignment => consignment.id !== form.id));
+        setOpen(false);
+        setForm(emptyConsignmentForm());
+      } else if (result.consignment) {
+        setConsignments(current => current.map(consignment => consignment.id === result.consignment!.id ? result.consignment! : consignment));
+        setForm(current => ({ ...current, itemDetails: result.consignment!.itemDetails }));
+      }
+      await loadInventory();
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : 'Não foi possível devolver o produto ao estoque.');
+    } finally {
+      setReturningItemId('');
+    }
+  };
+
+  const formatDate = (value: string) => {
+    const [year, month, day] = value.split('-');
+    return year && month && day ? `${day}/${month}/${year}` : value;
+  };
+
+  return <>
+    <ModuleShell title="Consignados" detail="Acompanhe os produtos disponibilizados em estabelecimentos parceiros" action="Novo consignado" onAction={openNew}>
+      {actionError && <p className="border-b bg-red-50 px-4 py-2 text-sm text-red-700">{actionError}</p>}
+      {loading ? <div className="p-8 text-center text-sm text-slate-500">Carregando consignados...</div> : consignments.length === 0 ? <div className="grid min-h-56 place-items-center p-8 text-center"><div><div className="mx-auto grid size-12 place-items-center rounded-2xl bg-blue-50 text-[var(--brand-blue)]"><Handshake className="size-6"/></div><p className="mt-4 font-semibold">Nenhum consignado cadastrado</p><p className="mt-1 text-sm text-slate-500">Adicione o primeiro estabelecimento e escolha os itens do estoque.</p></div></div> : <div className="overflow-x-auto"><table className="w-full min-w-[960px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Estabelecimento', 'Itens', 'Valor repassado', 'Data da entrega', 'Visita para reposição', 'Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{consignments.map(consignment => <Fragment key={consignment.id}><tr className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-4 text-sm font-semibold">{consignment.establishment}</td><td className="px-4 py-4"><button type="button" onClick={() => setExpandedConsignment(current => current === consignment.id ? '' : consignment.id)} className="text-xs font-medium text-[#0068ff] hover:underline">{expandedConsignment === consignment.id ? 'Ocultar itens' : 'Ver itens'}</button></td><td className="px-4 py-4 text-sm font-semibold text-slate-700">{brl(consignment.itemDetails.reduce((sum, item) => sum + item.quantity * item.passedValue, 0))}</td><td className="px-4 py-4 text-sm text-slate-600">{formatDate(consignment.deliveryDate)}</td><td className="px-4 py-4 text-sm text-slate-600">{formatDate(consignment.visitDate)}</td><td className="px-4 py-3"><div className="flex items-center gap-1"><Button onClick={() => void togglePayment(consignment)} disabled={payingId === consignment.id} variant="ghost" size="icon" aria-label={consignment.paid ? `Desfazer pagamento do consignado de ${consignment.establishment}` : `Marcar consignado de ${consignment.establishment} como pago`} title={consignment.paid ? 'Desfazer pagamento e remover os lançamentos' : 'Marcar como pago'} className={consignment.paid ? 'bg-emerald-100 text-emerald-700 hover:bg-amber-100 hover:text-amber-700' : 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700'}><CheckCircle2/></Button><Button onClick={() => openEdit(consignment)} variant="ghost" size="icon" aria-label={`Editar consignado de ${consignment.establishment}`} className="text-[#0068ff] hover:bg-blue-50"><Pencil/></Button></div></td></tr>{expandedConsignment === consignment.id && <tr className="border-b bg-blue-50/50"><td colSpan={6} className="px-4 py-3"><div className="overflow-hidden rounded-lg border border-blue-100 bg-white"><div className="grid grid-cols-[1fr_80px_150px_120px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400"><span>Produto</span><span>Qtd.</span><span>Valor repassado/un.</span><span>Subtotal</span></div>{consignment.itemDetails.map(item => <div key={item.inventoryItemId} className="grid grid-cols-[1fr_80px_150px_120px] gap-3 border-t px-3 py-2 text-xs text-slate-700"><span className="font-medium">{item.name}</span><span>{item.quantity}</span><span>{brl(item.passedValue)}</span><span className="font-semibold">{brl(item.quantity * item.passedValue)}</span></div>)}</div></td></tr>}</Fragment>)}</tbody></table></div>}
+    </ModuleShell>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader><DialogTitle className="flex items-center gap-2"><Handshake className="size-5 text-[#ff6b35]"/> {form.id ? 'Editar consignado' : 'Novo consignado'}</DialogTitle><DialogDescription>Escolha os produtos do estoque, defina o valor repassado e programe as visitas.</DialogDescription></DialogHeader>
+        <div className="grid gap-4 py-2">
+          <Field label="Nome do estabelecimento *"><Input value={form.establishment} onChange={event => setForm(current => ({ ...current, establishment: event.target.value }))} placeholder="Ex.: Loja Parceira Centro"/></Field>
+              <div className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_90px_140px_auto]">
+                <label className="text-xs font-medium text-slate-600">
+                  Produto *
+                  <select aria-label="Produto do estoque" value={itemId} onChange={event => chooseItem(event.target.value)} className="mt-1 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"><option value="">Selecionar produto...</option>{inventory.map(part => <option key={part.id} value={part.id} disabled={availableStock(part.id) <= 0}>{part.sku} — {part.name} ({availableStock(part.id)} un.)</option>)}</select>
+                </label>
+                <Field label="Quantidade"><Input aria-label="Quantidade" type="number" min="1" step="1" value={itemQuantity} onChange={event => setItemQuantity(Math.max(1, Number(event.target.value)))}/></Field>
+                <Field label="Valor repassado/un."><Input aria-label="Valor repassado por unidade" type="number" min="0" step=".01" value={passedValue} onChange={event => setPassedValue(Math.max(0, Number(event.target.value)))}/></Field>
+                <Button type="button" onClick={addItem} disabled={!itemId} className="bg-[var(--brand-blue)] text-white hover:bg-[#0055d4]"><Plus/> Adicionar</Button>
+              </div>
+          {form.itemDetails.length > 0 && <div className="space-y-2 rounded-xl border bg-slate-50 p-3">{form.itemDetails.map(item => <div key={item.inventoryItemId} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200"><div><p className="text-sm font-semibold">{item.name}</p><p className="text-xs text-slate-500">{item.quantity} un. · {brl(item.passedValue)} por unidade · Total {brl(item.quantity * item.passedValue)}</p></div><Button type="button" variant="outline" size="sm" disabled={returningItemId === item.inventoryItemId} aria-label={`Devolver ${item.name} ao estoque`} onClick={() => void returnToInventory(item)} className="shrink-0 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"><RotateCcw/> {returningItemId === item.inventoryItemId ? 'Devolvendo...' : form.id ? 'Devolver ao estoque' : 'Remover'}</Button></div>)}</div>}
+          <div className="grid gap-4 sm:grid-cols-2"><Field label="Data da entrega *"><Input type="date" value={form.deliveryDate} onChange={event => setForm(current => ({ ...current, deliveryDate: event.target.value }))}/></Field><Field label="Data da visita para reposição *"><Input type="date" min={form.deliveryDate} value={form.visitDate} onChange={event => setForm(current => ({ ...current, visitDate: event.target.value }))}/></Field></div>
+          {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        </div>
+        <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={() => void saveConsignment()} disabled={saving} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{saving ? 'Salvando...' : form.id ? 'Salvar alterações' : 'Salvar consignado'}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>;
 }
 
 function OrdersView() {

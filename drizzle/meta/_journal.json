@@ -15,6 +15,13 @@
       "when": 1788054507046,
       "tag": "0001_thick_secret_warriors",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788192000000,
+      "tag": "0002_add_consignments",
+      "breakpoints": true
     }
   ]
 }

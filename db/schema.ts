@@ -48,6 +48,25 @@ export const orderItems = sqliteTable('order_items', {
   itemName: text('item_name').notNull(), quantity: real('quantity').notNull(), unitCost: real('unit_cost').notNull(), unitPrice: real('unit_price').notNull(), subtotal: real('subtotal').notNull(), ...timestamps,
 }, t => [index('idx_order_items_order_id').on(t.orderId), index('idx_order_items_inventory_id').on(t.inventoryItemId)]);
 
+export const consignments = sqliteTable('consignments', {
+  id: text('id').primaryKey(),
+  establishment: text('establishment').notNull(),
+  items: text('items').notNull(),
+  deliveryAt: integer('delivery_at', { mode: 'timestamp' }).notNull(),
+  visitAt: integer('visit_at', { mode: 'timestamp' }),
+  ...timestamps,
+}, t => [index('idx_consignments_delivery').on(t.deliveryAt)]);
+
+export const consignmentItems = sqliteTable('consignment_items', {
+  id: text('id').primaryKey(),
+  consignmentId: text('consignment_id').notNull().references(() => consignments.id),
+  inventoryItemId: text('inventory_item_id').notNull().references(() => inventoryItems.id),
+  itemName: text('item_name').notNull(),
+  quantity: real('quantity').notNull(),
+  passedValue: real('passed_value').notNull(),
+  ...timestamps,
+}, t => [index('idx_consignment_items_consignment').on(t.consignmentId)]);
+
 export const transactions = sqliteTable('transactions', {
   id: text('id').primaryKey(), orderId: text('order_id').references(() => orders.id), type: text('type', { enum: ['income', 'expense'] }).notNull(), category: text('category').notNull(), description: text('description').notNull(), amount: real('amount').notNull(), dueAt: integer('due_at', { mode: 'timestamp' }).notNull(), paidAt: integer('paid_at', { mode: 'timestamp' }), paymentMethod: text('payment_method'), createdBy: text('created_by').notNull(), ...timestamps,
 }, t => [index('idx_transactions_type_due').on(t.type, t.dueAt), index('idx_transactions_order_id').on(t.orderId)]);
