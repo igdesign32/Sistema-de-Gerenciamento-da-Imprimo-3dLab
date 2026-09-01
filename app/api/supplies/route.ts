@@ -18,11 +18,7 @@ const categoryFor = (type?: string) => type?.trim().toLocaleLowerCase('pt-BR') =
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  let result = await env.DB.prepare(`${supplySelect} ORDER BY name`).all();
-  if (result.results.length === 0) {
-    await env.DB.prepare(`INSERT OR IGNORE INTO inventory_items (id, sku, name, description, category, material_type, brand, unit, quantity, min_quantity, unit_cost, sale_price, active, created_at, updated_at) VALUES ('supply-001', 'INS-001', 'Argola Italiana', 'Insumo inicial de referência', 'other', 'Outro', 'Shopee', 'un', 87, 0, 0.5, 0, 1, unixepoch(), unixepoch())`).run();
-    result = await env.DB.prepare(`${supplySelect} ORDER BY name`).all();
-  }
+  const result = await env.DB.prepare(`${supplySelect} ORDER BY name`).all();
   return Response.json(result.results);
 }
 

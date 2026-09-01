@@ -3,8 +3,8 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Boxes, Calculator, CheckCircle2, CircleDollarSign, Clock3,
-  FileText, HandCoins, LayoutDashboard, Menu, PackageOpen, Pencil, Plus, Search,
+  Boxes, Calculator, CheckCircle2, CircleDollarSign,
+  FileText, HandCoins, LayoutDashboard, Menu, Pencil, Plus, Search,
   Handshake, MessageCircle, Minus, Printer, RotateCcw, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -27,19 +27,13 @@ const nav: [React.ElementType, View][] = [
 ];
 const brl = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
 const parseBrl = (value: string) => Number(value.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
-const seedQuotes: Quote[] = [
-  { id: 'ORC-1052', client: 'Ateliê Norte', item: 'Luminária Voronoi', date: '29 ago', total: 'R$ 428,00', status: 'Pendente' },
-  { id: 'ORC-1051', client: 'Lumina Arquitetura', item: 'Maquete residencial', date: '28 ago', total: 'R$ 1.480,00', status: 'Aprovado' },
-  { id: 'ORC-1050', client: 'Clínica Orto+', item: 'Modelo anatômico', date: '27 ago', total: 'R$ 720,00', status: 'Enviado' },
-];
-
 export function SystemApp({ user, signOutPath }: { user: { name: string; email: string }; signOutPath: string }) {
   const [view, setView] = useState<View>('Visão geral');
   const [menu, setMenu] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
   const [quoteEditor, setQuoteEditor] = useState<Quote | null>(null);
-  const [quotes, setQuotes] = useState(seedQuotes);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
@@ -47,8 +41,8 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
       if (!response.ok) throw new Error('Não foi possível carregar os orçamentos.');
       return await response.json() as Array<Omit<Quote, 'total'> & { total: number }>;
     }).then(stored => {
-      if (stored.length) setQuotes(stored.map(quote => ({ ...quote, total: brl(Number(quote.total)), quantity: quote.quantity ?? 1, unitPrice: quote.unitPrice ?? Number(quote.total) })));
-    }).catch(() => { /* Mantém a prévia local quando o banco não estiver disponível. */ });
+      setQuotes(stored.map(quote => ({ ...quote, total: brl(Number(quote.total)), quantity: quote.quantity ?? 1, unitPrice: quote.unitPrice ?? Number(quote.total) })));
+    }).catch(() => setQuotes([]));
   }, []);
 
   const selectView = (next: View) => { setView(next); setMenu(false); };
@@ -118,7 +112,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
         {view === 'Visão geral' ? <Dashboard onNavigate={selectView} userName={user.name} /> : <Module view={view} quotes={quotes} onNewQuote={() => { setEditingQuote(null); setQuoteOpen(true); }} onEditQuote={quote => { setEditingQuote(quote); setQuoteOpen(true); }} onDeleteQuote={deleteQuote} onConvertQuote={convertQuoteToOrder} onCalculatorQuoteSaved={saveCalculatorQuote} onNavigate={selectView} user={user} />}
       </div>
     </main>
-    <QuoteDialog open={quoteOpen} onOpenChange={open => { setQuoteOpen(open); if (!open) setEditingQuote(null); }} onSave={saveQuote} onPay={payQuote} onPrint={quote => { setQuoteOpen(false); setEditingQuote(null); setQuoteEditor(quote); }} initialQuote={editingQuote} sequence={1053 + quotes.length - seedQuotes.length} />
+    <QuoteDialog open={quoteOpen} onOpenChange={open => { setQuoteOpen(open); if (!open) setEditingQuote(null); }} onSave={saveQuote} onPay={payQuote} onPrint={quote => { setQuoteOpen(false); setEditingQuote(null); setQuoteEditor(quote); }} initialQuote={editingQuote} sequence={Math.max(0, ...quotes.map(quote => Number(quote.id.replace(/\D/g, '')) || 0)) + 1} />
     {quoteEditor && <QuoteEditor quote={quoteEditor} onClose={() => setQuoteEditor(null)}/>}
     {notice && <output className="fixed bottom-5 right-5 z-[70] rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-xl">{notice}</output>}
   </div>;
@@ -134,11 +128,18 @@ function Sidebar({ view, menu, onClose, onSelect, user, signOutPath }: { view: V
 
 function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; userName: string }) {
   const [transactions, setTransactions] = useState<Array<{ type: 'Receita' | 'Despesa'; amount: number; dueDate: string }>>([]);
+  const [recentOrders, setRecentOrders] = useState<Array<{ id: string; customer: string; packageName: string; items: string; createdAt: string; total: number; status: string }>>([]);
   useEffect(() => {
     void fetch('/api/transactions').then(async response => {
       if (!response.ok) throw new Error('Não foi possível carregar o resumo financeiro.');
       return await response.json() as Array<{ type: 'Receita' | 'Despesa'; amount: number; dueDate: string }>;
     }).then(setTransactions).catch(() => setTransactions([]));
+  }, []);
+  useEffect(() => {
+    void fetch('/api/orders').then(async response => {
+      if (!response.ok) throw new Error('Não foi possível carregar os pedidos recentes.');
+      return await response.json() as typeof recentOrders;
+    }).then(orders => setRecentOrders(orders.slice(0, 4))).catch(() => setRecentOrders([]));
   }, []);
   const finance = useMemo(() => {
     const now = new Date(); now.setHours(23, 59, 59, 999);
@@ -163,14 +164,11 @@ function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; us
     [TrendingUp, 'Lucro líquido', brl(finance.netProfit), `${finance.margin.toFixed(1)}% de margem · últimos 30 dias`, 'violet'],
   ];
   return <>
-    <div className="mb-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><p className="text-sm text-slate-500">Olá, {firstName(userName)}.</p><h2 className="text-2xl font-bold tracking-[-.025em]">Sua produção está no ritmo certo.</h2></div><span className="text-xs text-slate-500">● Atualizado agora</span></div>
+    <div className="mb-6 flex flex-col justify-between gap-2 sm:flex-row sm:items-end"><div><p className="text-sm text-slate-500">Olá, {firstName(userName)}.</p><h2 className="text-2xl font-bold tracking-[-.025em]">{transactions.length || recentOrders.length ? 'Sua operação está atualizada.' : 'Comece cadastrando sua operação.'}</h2></div><span className="text-xs text-slate-500">● Atualizado agora</span></div>
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(([Icon, label, value, detail, color]) => <Card key={label} className="gap-3 border-0 bg-white py-4 shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between px-4"><CardTitle className="text-xs text-slate-500">{label}</CardTitle><div className={`metric-icon metric-${color}`}><Icon className="size-4" /></div></CardHeader><CardContent className="px-4"><p className="text-2xl font-bold">{value}</p><p className="mt-1 text-[11px] text-slate-500">{detail}</p></CardContent></Card>)}</section>
     <div className="mt-5">
-      <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between border-b"><div><CardTitle>Pedidos recentes</CardTitle><p className="text-xs text-slate-500">Prazos e andamento da operação</p></div><Button variant="ghost" onClick={() => onNavigate('Pedidos')} className="text-[#e65d2c]">Ver todos</Button></CardHeader><CardContent className="overflow-x-auto px-0"><DataTable headers={['Pedido / cliente', 'Trabalho', 'Prazo', 'Valor', 'Status']} rows={[
-        ['#1048 · Lumina Arquitetura', 'Maquete residencial', 'Hoje, 16:00', 'R$ 1.480,00', 'Em produção'], ['#1047 · Studio Objeto', 'Kit 12 expositores', 'Amanhã', 'R$ 864,00', 'Aguardando'], ['#1046 · Rafael Martins', 'Engrenagem técnica', '30 ago', 'R$ 295,00', 'Acabamento'], ['#1045 · Clínica Orto+', 'Modelo anatômico', '02 set', 'R$ 720,00', 'Aprovado'],
-      ]} /></CardContent></Card>
+      <Card className="border-0 bg-white shadow-sm ring-1 ring-[#e6eaf0]"><CardHeader className="flex flex-row items-center justify-between border-b"><div><CardTitle>Pedidos recentes</CardTitle><p className="text-xs text-slate-500">Prazos e andamento da operação</p></div><Button variant="ghost" onClick={() => onNavigate('Pedidos')} className="text-[#e65d2c]">Ver todos</Button></CardHeader><CardContent className="overflow-x-auto px-0">{recentOrders.length ? <DataTable headers={['Pedido / cliente', 'Trabalho', 'Criado em', 'Valor', 'Status']} rows={recentOrders.map(order => [`${order.id} · ${order.customer}`, order.packageName || order.items, order.createdAt, brl(Number(order.total)), order.status])} /> : <div className="grid min-h-40 place-items-center px-6 text-center"><div><p className="text-sm font-semibold text-slate-700">Nenhum pedido cadastrado</p><p className="mt-1 text-xs text-slate-500">Os pedidos aparecerão aqui conforme você testar o sistema.</p></div></div>}</CardContent></Card>
     </div>
-    <section className="mt-5 grid gap-4 sm:grid-cols-3"><AlertBox icon={PackageOpen} title="2 itens com estoque baixo" detail="PLA Branco e Resina Cinza" tone="orange"/><AlertBox icon={Clock3} title="18h de produção agendada" detail="Capacidade livre amanhã: 11h" tone="blue"/><AlertBox icon={WalletCards} title="R$ 2.350 a receber" detail="5 lançamentos em aberto" tone="green"/></section>
   </>;
 }
 
@@ -1050,7 +1048,6 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
 }
 
 function DataTable({ headers, rows }: { headers: string[]; rows: string[][] }) { return <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{headers.map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={`${row[0]}-${i}`} className="border-b last:border-0 hover:bg-slate-50/60">{row.map((cell, j) => <td key={j} className={`px-4 py-3 text-xs ${j === 0 ? 'font-semibold' : 'text-slate-600'}`}>{j === row.length - 1 ? <Badge variant="secondary" className="bg-blue-50 text-blue-700">{cell}</Badge> : cell}</td>)}</tr>)}</tbody></table></div>; }
-function AlertBox({ icon: Icon, title, detail, tone }: { icon: React.ElementType; title: string; detail: string; tone: string }) { return <div className="flex items-center gap-3 rounded-xl border bg-white p-4"><div className={`metric-icon metric-${tone}`}><Icon className="size-4"/></div><div><p className="text-xs font-bold">{title}</p><p className="text-[11px] text-slate-500">{detail}</p></div></div>; }
 function PricingSetting({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <Field label={label}><Input type="number" min="0" step=".01" value={value} onChange={event => onChange(Number(event.target.value))}/></Field>; }
 function Field({ label, children, dark = false }: { label: string; children: React.ReactNode; dark?: boolean }) { return <label className={`text-xs font-medium ${dark ? 'text-slate-300' : 'text-slate-600'}`}>{label}<div className="mt-1">{children}</div></label>; }
 function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'AD'; }
