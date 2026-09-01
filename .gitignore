@@ -31,6 +31,7 @@ yarn-error.log*
 .env*
 
 # deployment and generated files
+*.tsbuildinfo
 .vercel
 next-env.d.ts
 /dist/

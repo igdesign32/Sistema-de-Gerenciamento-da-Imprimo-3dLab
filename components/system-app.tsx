@@ -174,13 +174,6 @@ function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; us
   </>;
 }
 
-const moduleData: Record<Exclude<View, 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Consignados' | 'Configurações'>, { title: string; detail: string; headers: string[]; rows: string[][]; action: string }> = {
-  Pedidos: { title: '12 pedidos ativos', detail: 'Do orçamento aprovado até a entrega', headers: ['Pedido', 'Cliente', 'Trabalho', 'Responsável', 'Prazo', 'Status'], rows: [['#1048', 'Lumina Arquitetura', 'Maquete residencial', 'Carlos', 'Hoje, 16:00', 'Em produção'], ['#1047', 'Studio Objeto', 'Kit 12 expositores', 'Marina', 'Amanhã', 'Aguardando'], ['#1046', 'Rafael Martins', 'Engrenagem técnica', 'Carlos', '30 ago', 'Acabamento'], ['#1045', 'Clínica Orto+', 'Modelo anatômico', 'Marina', '02 set', 'Aprovado']], action: 'Novo pedido' },
-  Estoque: { title: 'Estoque de materiais', detail: 'Filamentos, resinas, peças e embalagens', headers: ['Material', 'Tipo / cor', 'Marca', 'Disponível', 'Custo médio', 'Situação'], rows: [['PLA Branco Neve', 'PLA · Branco', '3D Fila', '420 g', 'R$ 92/kg', 'Estoque baixo'], ['PETG Preto', 'PETG · Preto', 'Voolt3D', '1,8 kg', 'R$ 108/kg', 'Normal'], ['Resina Cinza', 'Standard · Cinza', 'Anycubic', '310 ml', 'R$ 146/L', 'Estoque baixo'], ['PLA Laranja', 'PLA · Laranja', '3D Fila', '2,4 kg', 'R$ 96/kg', 'Normal']], action: 'Entrada de material' },
-  Clientes: { title: '86 clientes cadastrados', detail: 'Relacionamento e histórico comercial', headers: ['Cliente', 'Contato', 'Pedidos', 'Último pedido', 'Faturamento', 'Situação'], rows: [['Lumina Arquitetura', '(11) 99945-2231', '14', '28 ago', 'R$ 8.420,00', 'Ativo'], ['Studio Objeto', '(11) 98872-0198', '8', '27 ago', 'R$ 4.180,00', 'Ativo'], ['Clínica Orto+', '(11) 99128-6330', '5', '25 ago', 'R$ 3.750,00', 'Ativo'], ['Rafael Martins', '(11) 98041-7212', '3', '24 ago', 'R$ 860,00', 'Pessoa física']], action: 'Novo cliente' },
-  Financeiro: { title: 'Financeiro de agosto', detail: 'Receitas, custos e resultado operacional', headers: ['Lançamento', 'Categoria', 'Vencimento', 'Forma', 'Valor', 'Situação'], rows: [['Pedido #1048', 'Receita de venda', '29 ago', 'PIX', 'R$ 1.480,00', 'A receber'], ['Fornecedor 3D Fila', 'Material', '30 ago', 'Boleto', '- R$ 820,00', 'Agendado'], ['Pedido #1046', 'Receita de venda', '28 ago', 'Cartão', 'R$ 295,00', 'Recebido'], ['Energia elétrica', 'Custo fixo', '05 set', 'Débito', '- R$ 486,00', 'Agendado']], action: 'Novo lançamento' },
-};
-
 function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, onConvertQuote, onCalculatorQuoteSaved, onNavigate, user }: { view: Exclude<View, 'Visão geral'>; quotes: Quote[]; onNewQuote: () => void; onEditQuote: (quote: Quote) => void; onDeleteQuote: (quote: Quote) => void; onConvertQuote: (quote: Quote) => void; onCalculatorQuoteSaved: (quote: CalculatorQuote) => void; onNavigate: (view: View) => void; user: { name: string; email: string } }) {
   if (view === 'Calculadora') return <CalculatorView onQuoteSaved={onCalculatorQuoteSaved}/>;
   if (view === 'Orçamentos') return <QuotesView quotes={quotes} onNewQuote={onNewQuote} onEdit={onEditQuote} onDelete={onDeleteQuote} onConvert={onConvertQuote}/>;
@@ -190,8 +183,7 @@ function Module({ view, quotes, onNewQuote, onEditQuote, onDeleteQuote, onConver
   if (view === 'Clientes') return <CustomersView />;
   if (view === 'Financeiro') return <FinanceView />;
   if (view === 'Configurações') return <SettingsView user={user} />;
-  const data = moduleData[view];
-  return <ModuleShell title={data.title} detail={data.detail} action={data.action}><DataTable headers={data.headers} rows={data.rows}/>{view === 'Financeiro' && <div className="grid gap-4 border-t bg-slate-50 p-4 sm:grid-cols-3"><Summary label="Receitas" value="R$ 18.740,00" color="text-emerald-600"/><Summary label="Despesas" value="R$ 11.820,00" color="text-red-600"/><Summary label="Resultado" value="R$ 6.920,00" color="text-blue-600"/></div>}</ModuleShell>;
+  return null;
 }
 
 type ConsignmentItem = { inventoryItemId: string; name: string; quantity: number; passedValue: number };
@@ -910,8 +902,8 @@ function SettingsView({ user }: { user: { name: string; email: string } }) {
 
   useEffect(() => {
     void fetch('/api/settings')
-      .then(response => response.ok ? response.json() : Promise.reject())
-      .then((settings: PricingDefaults) => setPricing(settings))
+      .then(response => response.ok ? response.json() as Promise<PricingDefaults> : Promise.reject())
+      .then(settings => setPricing(settings))
       .catch(() => setPricing(defaultPricingDefaults));
   }, []);
 
@@ -999,8 +991,8 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
       setQuoteSupplies(initialQuote?.supplies ?? []);
     };
     void fetch('/api/settings')
-      .then(response => response.ok ? response.json() : Promise.reject())
-      .then((settings: PricingDefaults) => hydrate(settings))
+      .then(response => response.ok ? response.json() as Promise<PricingDefaults> : Promise.reject())
+      .then(settings => hydrate(settings))
       .catch(() => hydrate(defaultPricingDefaults));
   }, [initialQuote, open]);
 
@@ -1059,7 +1051,6 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
 
 function DataTable({ headers, rows }: { headers: string[]; rows: string[][] }) { return <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{headers.map(h => <th key={h} className="px-4 py-3 font-semibold">{h}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={`${row[0]}-${i}`} className="border-b last:border-0 hover:bg-slate-50/60">{row.map((cell, j) => <td key={j} className={`px-4 py-3 text-xs ${j === 0 ? 'font-semibold' : 'text-slate-600'}`}>{j === row.length - 1 ? <Badge variant="secondary" className="bg-blue-50 text-blue-700">{cell}</Badge> : cell}</td>)}</tr>)}</tbody></table></div>; }
 function AlertBox({ icon: Icon, title, detail, tone }: { icon: React.ElementType; title: string; detail: string; tone: string }) { return <div className="flex items-center gap-3 rounded-xl border bg-white p-4"><div className={`metric-icon metric-${tone}`}><Icon className="size-4"/></div><div><p className="text-xs font-bold">{title}</p><p className="text-[11px] text-slate-500">{detail}</p></div></div>; }
-function Summary({ label, value, color }: { label: string; value: string; color: string }) { return <div><p className="text-xs text-slate-500">{label}</p><p className={`text-xl font-bold ${color}`}>{value}</p></div>; }
 function PricingSetting({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <Field label={label}><Input type="number" min="0" step=".01" value={value} onChange={event => onChange(Number(event.target.value))}/></Field>; }
 function Field({ label, children, dark = false }: { label: string; children: React.ReactNode; dark?: boolean }) { return <label className={`text-xs font-medium ${dark ? 'text-slate-300' : 'text-slate-600'}`}>{label}<div className="mt-1">{children}</div></label>; }
 function initials(name: string) { return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'AD'; }
