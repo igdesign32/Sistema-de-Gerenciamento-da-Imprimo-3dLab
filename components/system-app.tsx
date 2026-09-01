@@ -25,10 +25,24 @@ const nav: [React.ElementType, View][] = [
   [Handshake, 'Consignados'], [Boxes, 'Estoque'], [Users, 'Clientes'],
   [CircleDollarSign, 'Financeiro'], [Settings, 'Configurações'],
 ];
+const viewSlugs: Record<View, string> = {
+  'Visão geral': 'visao-geral',
+  'Calculadora': 'calculadora',
+  'Orçamentos': 'orcamentos',
+  'Pedidos': 'pedidos',
+  'Consignados': 'consignados',
+  'Estoque': 'estoque',
+  'Clientes': 'clientes',
+  'Financeiro': 'financeiro',
+  'Configurações': 'configuracoes',
+};
+const viewFromSlug = (slug: string): View =>
+  (Object.entries(viewSlugs).find(([, currentSlug]) => currentSlug === slug)?.[0] as View | undefined) ?? 'Visão geral';
+const QUOTE_DRAFT_KEY = 'imprimo3dlab:quote-draft:v1';
 const brl = (n: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
 const parseBrl = (value: string) => Number(value.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
-export function SystemApp({ user, signOutPath }: { user: { name: string; email: string }; signOutPath: string }) {
-  const [view, setView] = useState<View>('Visão geral');
+export function SystemApp({ user, signOutPath, initialViewSlug }: { user: { name: string; email: string }; signOutPath: string; initialViewSlug: string }) {
+  const [view, setView] = useState<View>(() => viewFromSlug(initialViewSlug));
   const [menu, setMenu] = useState(false);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
@@ -45,16 +59,41 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
     }).catch(() => setQuotes([]));
   }, []);
 
-  const selectView = (next: View) => { setView(next); setMenu(false); };
+  useEffect(() => {
+    const restoreViewFromAddress = () => {
+      const slug = new URL(window.location.href).searchParams.get('aba') ?? '';
+      setView(viewFromSlug(slug));
+    };
+    window.addEventListener('popstate', restoreViewFromAddress);
+    return () => window.removeEventListener('popstate', restoreViewFromAddress);
+  }, []);
+
+  const selectView = (next: View) => {
+    setView(next);
+    setMenu(false);
+    const url = new URL(window.location.href);
+    if (next === 'Visão geral') url.searchParams.delete('aba');
+    else url.searchParams.set('aba', viewSlugs[next]);
+    window.history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  };
   const saveQuote = async (quote: Quote, payload: Record<string, unknown>) => {
     const editing = quotes.some(current => current.id === quote.id);
-    setQuotes(current => editing ? current.map(item => item.id === quote.id ? quote : item) : [quote, ...current]);
-    setQuoteOpen(false);
-    setEditingQuote(null);
-    setView('Orçamentos');
-    setNotice(`${quote.id} ${editing ? 'atualizado' : 'salvo'} com sucesso.`);
-    window.setTimeout(() => setNotice(''), 3500);
-    try { await fetch('/api/quotes', { method: editing ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); } catch { /* UI remains useful offline */ }
+    try {
+      const response = await fetch('/api/quotes', { method: editing ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível salvar o orçamento.');
+      setQuotes(current => editing ? current.map(item => item.id === quote.id ? quote : item) : [quote, ...current]);
+      setQuoteOpen(false);
+      setEditingQuote(null);
+      selectView('Orçamentos');
+      setNotice(`${quote.id} ${editing ? 'atualizado' : 'salvo'} com sucesso.`);
+      window.setTimeout(() => setNotice(''), 3500);
+      return true;
+    } catch (problem) {
+      setNotice(problem instanceof Error ? problem.message : 'Não foi possível salvar o orçamento.');
+      window.setTimeout(() => setNotice(''), 4500);
+      return false;
+    }
   };
   const payQuote = async (quote: Quote, payload: Record<string, unknown>) => {
     try {
@@ -89,7 +128,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
       });
       const result = await response.json() as { id?: string; error?: string; alreadyExists?: boolean };
       if (!response.ok) throw new Error(result.error || 'Não foi possível enviar o orçamento para Pedidos.');
-      setView('Pedidos');
+      selectView('Pedidos');
       setNotice(result.alreadyExists ? `${quote.id} já estava em Pedidos.` : `${quote.id} enviado para Pedidos com sucesso.`);
       window.setTimeout(() => setNotice(''), 4000);
     } catch (problem) {
@@ -97,7 +136,7 @@ export function SystemApp({ user, signOutPath }: { user: { name: string; email: 
       window.setTimeout(() => setNotice(''), 4500);
     }
   };
-  const saveCalculatorQuote = (quote: CalculatorQuote) => { setQuotes(current => [quote, ...current]); setView('Orçamentos'); setNotice(`${quote.id} salvo em Orçamentos com peso, tempo e insumos.`); window.setTimeout(() => setNotice(''), 3500); };
+  const saveCalculatorQuote = (quote: CalculatorQuote) => { setQuotes(current => [quote, ...current]); selectView('Orçamentos'); setNotice(`${quote.id} salvo em Orçamentos com peso, tempo e insumos.`); window.setTimeout(() => setNotice(''), 3500); };
 
   return <div className="min-h-screen bg-[#f4f7fb] text-[#172033]">
     <Sidebar view={view} menu={menu} onClose={() => setMenu(false)} onSelect={selectView} user={user} signOutPath={signOutPath} />
@@ -189,6 +228,7 @@ type Consignment = { id: string; establishment: string; items: string; itemDetai
 type InventoryPart = { id: string; sku: string; name: string; stock: number; price: number };
 
 const emptyConsignmentForm = () => ({ id: '', establishment: '', itemDetails: [] as ConsignmentItem[], deliveryDate: new Date().toISOString().slice(0, 10), visitDate: '' });
+const CONSIGNMENT_DRAFT_KEY = 'imprimo3dlab:consignment-draft:v1';
 
 function ConsignmentsView() {
   const [consignments, setConsignments] = useState<Consignment[]>([]);
@@ -205,12 +245,30 @@ function ConsignmentsView() {
   const [itemId, setItemId] = useState('');
   const [itemQuantity, setItemQuantity] = useState(1);
   const [passedValue, setPassedValue] = useState(0);
+  const [draftLoaded, setDraftLoaded] = useState(false);
 
   const loadInventory = () => fetch('/api/inventory').then(response => response.ok ? response.json() as Promise<InventoryPart[]> : Promise.reject()).then(setInventory);
   useEffect(() => { void Promise.all([
     fetch('/api/consignments').then(response => response.ok ? response.json() as Promise<Consignment[]> : Promise.reject()).then(setConsignments),
     loadInventory(),
   ]).catch(() => { setConsignments([]); setInventory([]); }).finally(() => setLoading(false)); }, []);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CONSIGNMENT_DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as ReturnType<typeof emptyConsignmentForm>;
+        if (!draft.id && (draft.establishment || draft.itemDetails?.length || draft.visitDate)) { setForm(draft); setOpen(true); }
+      }
+    } catch { /* Mantém o formulário vazio quando não houver rascunho válido. */ }
+    setDraftLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!draftLoaded || !open || form.id) return;
+    const timer = window.setTimeout(() => {
+      try { window.localStorage.setItem(CONSIGNMENT_DRAFT_KEY, JSON.stringify(form)); } catch { /* O salvamento definitivo continua sendo feito no banco. */ }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [draftLoaded, open, form]);
 
   const availableStock = (partId: string) => (inventory.find(part => part.id === partId)?.stock ?? 0) + (form.id ? consignments.find(consignment => consignment.id === form.id)?.itemDetails.find(item => item.inventoryItemId === partId)?.quantity ?? 0 : 0);
   const chooseItem = (nextId: string) => {
@@ -250,6 +308,7 @@ function ConsignmentsView() {
       setConsignments(current => form.id ? current.map(item => item.id === savedResult.id ? savedResult : item) : [savedResult, ...current]);
       await loadInventory();
       setForm(emptyConsignmentForm());
+      window.localStorage.removeItem(CONSIGNMENT_DRAFT_KEY);
       setOpen(false);
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Não foi possível salvar o consignado.');
@@ -312,7 +371,7 @@ function ConsignmentsView() {
       {actionError && <p className="border-b bg-red-50 px-4 py-2 text-sm text-red-700">{actionError}</p>}
       {loading ? <div className="p-8 text-center text-sm text-slate-500">Carregando consignados...</div> : consignments.length === 0 ? <div className="grid min-h-56 place-items-center p-8 text-center"><div><div className="mx-auto grid size-12 place-items-center rounded-2xl bg-blue-50 text-[var(--brand-blue)]"><Handshake className="size-6"/></div><p className="mt-4 font-semibold">Nenhum consignado cadastrado</p><p className="mt-1 text-sm text-slate-500">Adicione o primeiro estabelecimento e escolha os itens do estoque.</p></div></div> : <div className="overflow-x-auto"><table className="w-full min-w-[960px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Estabelecimento', 'Itens', 'Valor repassado', 'Data da entrega', 'Visita para reposição', 'Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{consignments.map(consignment => <Fragment key={consignment.id}><tr className="border-b last:border-0 hover:bg-slate-50/60"><td className="px-4 py-4 text-sm font-semibold">{consignment.establishment}</td><td className="px-4 py-4"><button type="button" onClick={() => setExpandedConsignment(current => current === consignment.id ? '' : consignment.id)} className="text-xs font-medium text-[#0068ff] hover:underline">{expandedConsignment === consignment.id ? 'Ocultar itens' : 'Ver itens'}</button></td><td className="px-4 py-4 text-sm font-semibold text-slate-700">{brl(consignment.itemDetails.reduce((sum, item) => sum + item.quantity * item.passedValue, 0))}</td><td className="px-4 py-4 text-sm text-slate-600">{formatDate(consignment.deliveryDate)}</td><td className="px-4 py-4 text-sm text-slate-600">{formatDate(consignment.visitDate)}</td><td className="px-4 py-3"><div className="flex items-center gap-1"><Button onClick={() => void togglePayment(consignment)} disabled={payingId === consignment.id} variant="ghost" size="icon" aria-label={consignment.paid ? `Desfazer pagamento do consignado de ${consignment.establishment}` : `Marcar consignado de ${consignment.establishment} como pago`} title={consignment.paid ? 'Desfazer pagamento e remover os lançamentos' : 'Marcar como pago'} className={consignment.paid ? 'bg-emerald-100 text-emerald-700 hover:bg-amber-100 hover:text-amber-700' : 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700'}><CheckCircle2/></Button><Button onClick={() => openEdit(consignment)} variant="ghost" size="icon" aria-label={`Editar consignado de ${consignment.establishment}`} className="text-[#0068ff] hover:bg-blue-50"><Pencil/></Button></div></td></tr>{expandedConsignment === consignment.id && <tr className="border-b bg-blue-50/50"><td colSpan={6} className="px-4 py-3"><div className="overflow-hidden rounded-lg border border-blue-100 bg-white"><div className="grid grid-cols-[1fr_80px_150px_120px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400"><span>Produto</span><span>Qtd.</span><span>Valor repassado/un.</span><span>Subtotal</span></div>{consignment.itemDetails.map(item => <div key={item.inventoryItemId} className="grid grid-cols-[1fr_80px_150px_120px] gap-3 border-t px-3 py-2 text-xs text-slate-700"><span className="font-medium">{item.name}</span><span>{item.quantity}</span><span>{brl(item.passedValue)}</span><span className="font-semibold">{brl(item.quantity * item.passedValue)}</span></div>)}</div></td></tr>}</Fragment>)}</tbody></table></div>}
     </ModuleShell>
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={nextOpen => { setOpen(nextOpen); if (!nextOpen && !form.id) { window.localStorage.removeItem(CONSIGNMENT_DRAFT_KEY); setForm(emptyConsignmentForm()); } }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader><DialogTitle className="flex items-center gap-2"><Handshake className="size-5 text-[#ff6b35]"/> {form.id ? 'Editar consignado' : 'Novo consignado'}</DialogTitle><DialogDescription>Escolha os produtos do estoque, defina o valor repassado e programe as visitas.</DialogDescription></DialogHeader>
         <div className="grid gap-4 py-2">
@@ -330,7 +389,7 @@ function ConsignmentsView() {
           <div className="grid gap-4 sm:grid-cols-2"><Field label="Data da entrega *"><Input type="date" value={form.deliveryDate} onChange={event => setForm(current => ({ ...current, deliveryDate: event.target.value }))}/></Field><Field label="Data da visita para reposição *"><Input type="date" min={form.deliveryDate} value={form.visitDate} onChange={event => setForm(current => ({ ...current, visitDate: event.target.value }))}/></Field></div>
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button onClick={() => void saveConsignment()} disabled={saving} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{saving ? 'Salvando...' : form.id ? 'Salvar alterações' : 'Salvar consignado'}</Button></DialogFooter>
+        <DialogFooter><Button variant="outline" onClick={() => { setOpen(false); if (!form.id) { window.localStorage.removeItem(CONSIGNMENT_DRAFT_KEY); setForm(emptyConsignmentForm()); } }}>Cancelar</Button><Button onClick={() => void saveConsignment()} disabled={saving} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{saving ? 'Salvando...' : form.id ? 'Salvar alterações' : 'Salvar consignado'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </>;
@@ -497,6 +556,7 @@ type CartItem = { partId: string; quantity: number; unitPrice: number; supplies?
 type Customer = { id: string; name: string; phone: string; email: string };
 type Supply = { id: string; name: string; type: string; quantity: number; unit: string; unitCost: number; supplier: string };
 type SupplySaveInput = Supply & { restockQuantity?: number };
+const INVENTORY_STATE_KEY = 'imprimo3dlab:inventory-state:v1';
 
 function FinishedParts({ onNavigate }: { onNavigate: (view: View) => void }) {
   const [inventorySection, setInventorySection] = useState<'parts' | 'supplies'>('parts');
@@ -514,6 +574,7 @@ function FinishedParts({ onNavigate }: { onNavigate: (view: View) => void }) {
   const [customerOpen, setCustomerOpen] = useState(false);
   const [assignedCustomer, setAssignedCustomer] = useState<Customer | null>(null);
   const [finalizing, setFinalizing] = useState(false);
+  const [localStateLoaded, setLocalStateLoaded] = useState(false);
   const loadParts = async () => {
     try {
       const response = await fetch('/api/inventory');
@@ -524,6 +585,24 @@ function FinishedParts({ onNavigate }: { onNavigate: (view: View) => void }) {
     finally { setLoadingParts(false); }
   };
   useEffect(() => { void loadParts(); }, []);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(INVENTORY_STATE_KEY);
+      if (raw) {
+        const state = JSON.parse(raw) as Partial<{ inventorySection: 'parts' | 'supplies'; query: string; cart: CartItem[]; cartOpen: boolean; packageName: string; assignedCustomer: Customer | null }>;
+        if (state.inventorySection) setInventorySection(state.inventorySection);
+        setQuery(state.query ?? ''); setCart(state.cart ?? []); setCartOpen(Boolean(state.cartOpen && state.cart?.length)); setPackageName(state.packageName ?? ''); setAssignedCustomer(state.assignedCustomer ?? null);
+      }
+    } catch { /* Mantém a tela utilizável caso o armazenamento local esteja indisponível. */ }
+    setLocalStateLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!localStateLoaded) return;
+    const timer = window.setTimeout(() => {
+      try { window.localStorage.setItem(INVENTORY_STATE_KEY, JSON.stringify({ inventorySection, query, cart, cartOpen, packageName, assignedCustomer })); } catch { /* O banco continua sendo a fonte dos registros salvos. */ }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [localStateLoaded, inventorySection, query, cart, cartOpen, packageName, assignedCustomer]);
   const filteredParts = parts.filter(part => `${part.sku} ${part.name} ${part.detail} ${part.color}`.toLocaleLowerCase('pt-BR').includes(query.toLocaleLowerCase('pt-BR')));
   const stockUnits = parts.reduce((total, part) => total + part.stock, 0);
   const stockValue = parts.reduce((total, part) => total + part.stock * part.price, 0);
@@ -951,7 +1030,7 @@ function SettingsView({ user }: { user: { name: string; email: string } }) {
   </div>;
 }
 
-function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote, sequence }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (q: Quote, p: Record<string, unknown>) => void; onPay: (quote: Quote, payload: Record<string, unknown>) => Promise<boolean>; onPrint: (quote: Quote) => void; initialQuote: Quote | null; sequence: number }) {
+function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote, sequence }: { open: boolean; onOpenChange: (v: boolean) => void; onSave: (q: Quote, p: Record<string, unknown>) => Promise<boolean>; onPay: (quote: Quote, payload: Record<string, unknown>) => Promise<boolean>; onPrint: (quote: Quote) => void; initialQuote: Quote | null; sequence: number }) {
   const [client, setClient] = useState('');
   const [item, setItem] = useState('');
   const [grams, setGrams] = useState(180);
@@ -967,32 +1046,51 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
   const [notes, setNotes] = useState('');
   const [quoteSupplies, setQuoteSupplies] = useState<CalculatorQuoteSupply[]>([]);
   const [paying, setPaying] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const hours = timeHours + timeMinutes / 60;
 
   useEffect(() => {
     if (!open) return;
+    setDraftLoaded(false);
+    let draft: Partial<Quote> & { customUnitPrice?: number | null } = {};
+    if (!initialQuote) {
+      try {
+        const raw = window.localStorage.getItem(QUOTE_DRAFT_KEY);
+        if (raw) draft = JSON.parse(raw) as typeof draft;
+      } catch { /* Um rascunho inválido não deve impedir a abertura do formulário. */ }
+    }
     const hydrate = (settings: PricingDefaults) => {
       const savedHours = initialQuote?.hours ?? 9.5;
-      setClient(initialQuote?.client ?? '');
-      setItem(initialQuote?.item ?? '');
-      setGrams(initialQuote?.grams ?? 180);
-      setTimeHours(initialQuote?.timeHours ?? Math.floor(savedHours));
-      setTimeMinutes(initialQuote?.timeMinutes ?? Math.round((savedHours % 1) * 60));
-      setEnergyRate(initialQuote?.energyRate ?? settings.energyRate);
-      setMachineRate(initialQuote?.machineRate ?? settings.machineRate);
-      setPackaging(initialQuote?.packaging ?? settings.packaging);
-      setFees(initialQuote?.fees ?? settings.fees);
-      setMargin(initialQuote?.margin ?? settings.margin);
-      setQuantity(initialQuote?.quantity ?? 1);
-      setCustomUnitPrice(initialQuote ? initialQuote.unitPrice ?? parseBrl(initialQuote.total) / Math.max(1, initialQuote.quantity ?? 1) : null);
-      setNotes(initialQuote?.notes ?? '');
-      setQuoteSupplies(initialQuote?.supplies ?? []);
+      setClient(initialQuote?.client ?? draft.client ?? '');
+      setItem(initialQuote?.item ?? draft.item ?? '');
+      setGrams(initialQuote?.grams ?? draft.grams ?? 180);
+      setTimeHours(initialQuote?.timeHours ?? draft.timeHours ?? Math.floor(savedHours));
+      setTimeMinutes(initialQuote?.timeMinutes ?? draft.timeMinutes ?? Math.round((savedHours % 1) * 60));
+      setEnergyRate(initialQuote?.energyRate ?? draft.energyRate ?? settings.energyRate);
+      setMachineRate(initialQuote?.machineRate ?? draft.machineRate ?? settings.machineRate);
+      setPackaging(initialQuote?.packaging ?? draft.packaging ?? settings.packaging);
+      setFees(initialQuote?.fees ?? draft.fees ?? settings.fees);
+      setMargin(initialQuote?.margin ?? draft.margin ?? settings.margin);
+      setQuantity(initialQuote?.quantity ?? draft.quantity ?? 1);
+      setCustomUnitPrice(initialQuote ? initialQuote.unitPrice ?? parseBrl(initialQuote.total) / Math.max(1, initialQuote.quantity ?? 1) : draft.customUnitPrice ?? null);
+      setNotes(initialQuote?.notes ?? draft.notes ?? '');
+      setQuoteSupplies(initialQuote?.supplies ?? draft.supplies ?? []);
+      setDraftLoaded(true);
     };
     void fetch('/api/settings')
       .then(response => response.ok ? response.json() as Promise<PricingDefaults> : Promise.reject())
       .then(settings => hydrate(settings))
       .catch(() => hydrate(defaultPricingDefaults));
   }, [initialQuote, open]);
+
+  useEffect(() => {
+    if (!open || initialQuote || !draftLoaded) return;
+    const timer = window.setTimeout(() => {
+      try { window.localStorage.setItem(QUOTE_DRAFT_KEY, JSON.stringify({ client, item, grams, timeHours, timeMinutes, energyRate, machineRate, packaging, fees, margin, quantity, customUnitPrice, notes, supplies: quoteSupplies })); } catch { /* O banco continua sendo a fonte do orçamento salvo. */ }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [open, initialQuote, draftLoaded, client, item, grams, timeHours, timeMinutes, energyRate, machineRate, packaging, fees, margin, quantity, customUnitPrice, notes, quoteSupplies]);
 
   const calc = useMemo(() => {
     const material = grams * .095;
@@ -1013,7 +1111,14 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
     energyRate, machineRate, packaging, fees, margin, notes, supplies: quoteSupplies,
   });
   const payload = (quote: Quote) => ({ ...quote, total: finalTotal, details: { selectedSupplies: quote.supplies ?? [] } });
-  const submit = () => { if (!valid) return; const quote = buildQuote(); onSave(quote, payload(quote)); };
+  const submit = async () => {
+    if (!valid) return;
+    setSaving(true);
+    const quote = buildQuote();
+    const saved = await onSave(quote, payload(quote));
+    if (saved && !initialQuote) window.localStorage.removeItem(QUOTE_DRAFT_KEY);
+    setSaving(false);
+  };
   const print = () => { if (!valid) return; onPrint(buildQuote()); };
   const pay = async () => {
     if (!valid || initialQuote?.status === 'Pago') return;
@@ -1043,7 +1148,7 @@ function QuoteDialog({ open, onOpenChange, onSave, onPay, onPrint, initialQuote,
     </div>
     <p className="text-[11px] text-slate-500">Os campos em cinza seguem os padrões salvos em Configurações.</p>
     <div className="grid items-stretch gap-3 sm:grid-cols-3"><div className="flex min-h-24 flex-col justify-center rounded-xl bg-[#032c5e] p-4 shadow-sm"><p className="text-xs font-medium text-white/80">Custo</p><p className="mt-1 text-xl font-bold text-white">{brl(calc.cost)}</p></div><div className="flex min-h-24 flex-col justify-center rounded-xl bg-[#032c5e] p-4 shadow-sm"><p className="text-xs font-medium text-white/80">Lucro real</p><p className={`mt-1 text-xl font-bold ${finalTotal - calc.cost >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{brl(finalTotal - calc.cost)}</p></div><div className="flex min-h-24 flex-col justify-center rounded-xl bg-[#032c5e] p-4 shadow-sm"><label htmlFor="quote-total" className="text-xs font-medium text-white/80">Total editável</label><div className="relative mt-1"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-white">R$</span><Input id="quote-total" aria-label="Valor total do orçamento" type="number" min="0" step=".01" value={Number(finalTotal.toFixed(2))} onChange={event => setCustomUnitPrice(Math.max(0, Number(event.target.value) || 0) / Math.max(1, quantity))} className="h-10 border-white/35 bg-white/10 pl-10 text-lg font-bold text-white placeholder:text-white/50 focus-visible:border-white focus-visible:ring-white/30"/></div></div></div>
-    <DialogFooter className="flex-wrap sm:justify-between"><Button onClick={print} disabled={!valid} variant="outline"><Printer/> Imprimir orçamento</Button><div className="flex flex-wrap gap-2"><Button onClick={() => void pay()} disabled={!valid || paying || initialQuote?.status === 'Pago'} className="bg-emerald-600 text-white hover:bg-emerald-700"><CheckCircle2/> {initialQuote?.status === 'Pago' ? 'Pago' : paying ? 'Registrando...' : 'Pago'}</Button><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={submit} disabled={!valid || paying} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{initialQuote ? 'Salvar alterações' : 'Salvar orçamento'}</Button></div></DialogFooter>
+    <DialogFooter className="flex-wrap sm:justify-between"><Button onClick={print} disabled={!valid || saving} variant="outline"><Printer/> Imprimir orçamento</Button><div className="flex flex-wrap gap-2"><Button onClick={() => void pay()} disabled={!valid || paying || saving || initialQuote?.status === 'Pago'} className="bg-emerald-600 text-white hover:bg-emerald-700"><CheckCircle2/> {initialQuote?.status === 'Pago' ? 'Pago' : paying ? 'Registrando...' : 'Pago'}</Button><Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancelar</Button><Button onClick={() => void submit()} disabled={!valid || paying || saving} className="bg-[#ff6b35] text-white hover:bg-[#e85c2b]">{saving ? 'Salvando...' : initialQuote ? 'Salvar alterações' : 'Salvar orçamento'}</Button></div></DialogFooter>
   </DialogContent></Dialog>;
 }
 

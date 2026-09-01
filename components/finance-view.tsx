@@ -23,6 +23,7 @@ const categories = ['Vendas diversas', 'Peças acabadas', 'Venda de orçamento',
 const expenseCategories = ['Material', 'Custo de produção', 'Energia', 'Manutenção', 'Embalagem', 'Frete', 'Serviços', 'Impostos', 'Aluguel', 'Outros'];
 const accounts = ['Conta Corrente', 'Dinheiro', 'Carteira Digital', 'Outros'];
 const paymentMethods = ['Pix', 'Dinheiro', 'Cartão', 'Transferência', 'Boleto', 'Venda Direta'];
+const FINANCE_STATE_KEY = 'imprimo3dlab:finance-state:v1';
 
 export function FinanceView() {
   const [transactions, setTransactions] = useState<FinanceTransaction[]>([]);
@@ -51,6 +52,7 @@ export function FinanceView() {
   const [paymentMethod, setPaymentMethod] = useState(paymentMethods[0]);
   const [notes, setNotes] = useState('');
   const [expenseKind, setExpenseKind] = useState<'Fixa' | 'Variável'>('Variável');
+  const [draftLoaded, setDraftLoaded] = useState(false);
 
   const loadData = async () => {
     try {
@@ -63,6 +65,35 @@ export function FinanceView() {
   };
   // oxlint-disable-next-line react/react-compiler -- Os dados externos precisam ser carregados quando a tela é aberta.
   useEffect(() => { void loadData(); }, []);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(FINANCE_STATE_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as Partial<{
+          period: Period; customStart: string; customEnd: string; tab: FinanceTab; query: string;
+          categoryFilter: string; paymentFilter: string; accountFilter: string; expenseKindFilter: string;
+          dueDate: string; inventoryItemId: string; product: string; category: string; quantity: number;
+          unitValue: number; account: string; paymentMethod: string; notes: string; expenseKind: 'Fixa' | 'Variável';
+        }>;
+        if (draft.period) setPeriod(draft.period);
+        if (draft.customStart) setCustomStart(draft.customStart);
+        if (draft.customEnd) setCustomEnd(draft.customEnd);
+        if (draft.tab) setTab(draft.tab);
+        setQuery(draft.query ?? ''); setCategoryFilter(draft.categoryFilter ?? ''); setPaymentFilter(draft.paymentFilter ?? ''); setAccountFilter(draft.accountFilter ?? ''); setExpenseKindFilter(draft.expenseKindFilter ?? '');
+        setDueDate(draft.dueDate ?? localDate()); setInventoryItemId(draft.inventoryItemId ?? ''); setProduct(draft.product ?? ''); setCategory(draft.category ?? categories[0]); setQuantity(draft.quantity ?? 1); setUnitValue(draft.unitValue ?? 0); setAccount(draft.account ?? accounts[0]); setPaymentMethod(draft.paymentMethod ?? paymentMethods[0]); setNotes(draft.notes ?? ''); setExpenseKind(draft.expenseKind ?? 'Variável');
+      }
+    } catch { /* Mantém os valores iniciais caso o armazenamento local esteja indisponível. */ }
+    setDraftLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!draftLoaded || editingId) return;
+    const timer = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(FINANCE_STATE_KEY, JSON.stringify({ period, customStart, customEnd, tab, query, categoryFilter, paymentFilter, accountFilter, expenseKindFilter, dueDate, inventoryItemId, product, category, quantity, unitValue, account, paymentMethod, notes, expenseKind }));
+      } catch { /* A indisponibilidade do rascunho não impede o uso do banco de dados. */ }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [draftLoaded, editingId, period, customStart, customEnd, tab, query, categoryFilter, paymentFilter, accountFilter, expenseKindFilter, dueDate, inventoryItemId, product, category, quantity, unitValue, account, paymentMethod, notes, expenseKind]);
 
   const periodTransactions = useMemo(() => {
     const now = new Date(); now.setHours(23, 59, 59, 999);

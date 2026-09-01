@@ -5,14 +5,32 @@ type QuoteInput = Record<string, unknown>;
 type StoredQuoteRow = Record<string, unknown> & { notes?: string | null };
 
 function encodedNotes(body: QuoteInput) {
-  return JSON.stringify({ notes: typeof body.notes === 'string' ? body.notes : '', details: body.details && typeof body.details === 'object' ? body.details : null });
+  const suppliedDetails = body.details && typeof body.details === 'object' ? body.details as Record<string, unknown> : {};
+  return JSON.stringify({
+    notes: typeof body.notes === 'string' ? body.notes : '',
+    details: {
+      ...suppliedDetails,
+      quantity: body.quantity,
+      unitPrice: body.unitPrice,
+      timeHours: body.timeHours,
+      timeMinutes: body.timeMinutes,
+    },
+  });
 }
 
 function decodedQuote(row: StoredQuoteRow) {
   if (!row.notes) return { ...row, notes: '', supplies: [] };
   try {
-    const stored = JSON.parse(row.notes) as { notes?: string; details?: { selectedSupplies?: unknown[] } };
-    return { ...row, notes: stored.notes ?? '', supplies: stored.details?.selectedSupplies ?? [] };
+    const stored = JSON.parse(row.notes) as { notes?: string; details?: { selectedSupplies?: unknown[]; quantity?: number; unitPrice?: number; timeHours?: number; timeMinutes?: number } };
+    return {
+      ...row,
+      notes: stored.notes ?? '',
+      supplies: stored.details?.selectedSupplies ?? [],
+      quantity: stored.details?.quantity,
+      unitPrice: stored.details?.unitPrice,
+      timeHours: stored.details?.timeHours,
+      timeMinutes: stored.details?.timeMinutes,
+    };
   } catch {
     return { ...row, notes: row.notes, supplies: [] };
   }
