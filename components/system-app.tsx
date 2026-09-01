@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import {
   Boxes, Calculator, CheckCircle2, CircleDollarSign,
   FileText, HandCoins, LayoutDashboard, Menu, Pencil, Plus, Search,
-  Handshake, MessageCircle, Minus, Printer, RotateCcw, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
+  Handshake, MessageCircle, Minus, PackageOpen, Printer, RotateCcw, Settings, ShoppingBag, ShoppingCart, Trash2, TrendingUp, UserCog, UserPlus, Users, WalletCards, X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
