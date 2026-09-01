@@ -18,7 +18,16 @@ const SIGN_IN_PATH = '/signin-with-chatgpt';
 const SIGN_OUT_PATH = '/signout-with-chatgpt';
 const CALLBACK_PATH = '/callback';
 
-export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
+function authorizedAdminEmails(): Set<string> {
+  return new Set(
+    (process.env.ADMIN_EMAILS ?? '')
+      .split(',')
+      .map(normalizeEmail)
+      .filter(Boolean),
+  );
+}
+
+export async function getAuthenticatedChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
   const userId = requestHeaders.get(USER_ID_HEADER);
   const email = requestHeaders.get(USER_EMAIL_HEADER);
@@ -39,13 +48,26 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   };
 }
 
+export function isAuthorizedAdminEmail(email: string): boolean {
+  return authorizedAdminEmails().has(normalizeEmail(email));
+}
+
+export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
+  const user = await getAuthenticatedChatGPTUser();
+  return user && isAuthorizedAdminEmail(user.email) ? user : null;
+}
+
 export async function requireChatGPTUser(
   returnTo: string,
 ): Promise<ChatGPTUser> {
-  const user = await getChatGPTUser();
-  if (user) return user;
+  const user = await getAuthenticatedChatGPTUser();
+  if (!user) redirect(chatGPTSignInPath(returnTo));
 
-  redirect(chatGPTSignInPath(returnTo));
+  if (!isAuthorizedAdminEmail(user.email)) {
+    redirect('/access-denied');
+  }
+
+  return user;
 }
 
 export function chatGPTSignInPath(returnTo: string): string {
@@ -87,4 +109,8 @@ function safeDecodeURIComponent(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+function normalizeEmail(value: string): string {
+  return value.trim().toLocaleLowerCase('en-US');
 }

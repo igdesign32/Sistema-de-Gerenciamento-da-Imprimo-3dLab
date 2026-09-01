@@ -7,15 +7,25 @@ import {
 import {
   chatGPTSignInPath,
   chatGPTSignOutPath,
-  getChatGPTUser,
+  getAuthenticatedChatGPTUser,
+  isAuthorizedAdminEmail,
 } from '@/app/chatgpt-auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function LoginPage() {
-  const user = await getChatGPTUser();
-  const primaryHref = user ? '/' : chatGPTSignInPath('/');
-  const primaryLabel = user ? 'Continuar para o sistema' : 'Entrar como administrador';
+  const user = await getAuthenticatedChatGPTUser();
+  const authorized = user ? isAuthorizedAdminEmail(user.email) : false;
+  const primaryHref = user
+    ? authorized
+      ? '/'
+      : '/access-denied'
+    : chatGPTSignInPath('/');
+  const primaryLabel = user
+    ? authorized
+      ? 'Continuar para o sistema'
+      : 'Verificar acesso'
+    : 'Entrar como administrador';
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[var(--brand-blue)] px-5 py-8 text-white sm:px-8 lg:grid lg:place-items-center">
