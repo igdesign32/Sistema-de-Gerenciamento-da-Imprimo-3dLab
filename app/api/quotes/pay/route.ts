@@ -14,9 +14,14 @@ type PaidQuoteInput = {
   fees?: number;
   margin?: number;
   total?: number;
+  cost?: number;
+  totalCost?: number;
   notes?: string;
   quantity?: number;
-  details?: { selectedSupplies?: unknown[] };
+  unitPrice?: number;
+  timeHours?: number;
+  timeMinutes?: number;
+  details?: { selectedSupplies?: unknown[]; totalCost?: number; unitCost?: number };
 };
 
 export async function POST(request: Request) {
@@ -41,12 +46,13 @@ export async function POST(request: Request) {
   const machineCost = hours * machineRate;
   const baseCost = materialCost + energyCost + machineCost + packaging;
   const feesCost = baseCost * fees / 100;
-  const totalCost = baseCost + feesCost;
+  const providedCost = Math.max(0, Number(body.totalCost ?? body.cost ?? body.details?.totalCost) || 0);
+  const totalCost = providedCost > 0 ? providedCost : baseCost + feesCost;
   const incomeId = `quote-income:${id}`;
   const expenseId = `quote-expense:${id}`;
   const incomeDescription = JSON.stringify({ product: `Orçamento ${id} — ${item}`, quantity: 1, account: 'Conta Corrente', notes: `Cliente: ${client}` });
   const expenseDescription = JSON.stringify({ product: `Custo de produção — ${item}`, quantity: 1, account: 'Conta Corrente', notes: `Gerado automaticamente pelo orçamento ${id}`, expenseKind: 'Variável' });
-  const storedNotes = JSON.stringify({ notes: body.notes?.trim() || '', details: body.details ?? null });
+  const storedNotes = JSON.stringify({ notes: body.notes?.trim() || '', details: { ...(body.details ?? {}), quantity: body.quantity, unitPrice: body.unitPrice, totalCost, timeHours: body.timeHours, timeMinutes: body.timeMinutes } });
   const dueAt = businessDateUnix();
 
   await env.DB.batch([

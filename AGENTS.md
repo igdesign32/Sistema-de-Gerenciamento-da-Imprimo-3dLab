@@ -15,18 +15,15 @@ Este projeto usa o repositório `origin` no GitHub e a branch principal `main` c
 
 Não realizar `push --force`, reescrever histórico ou apagar branches sem solicitação explícita do usuário.
 
-## Comando rápido de publicação
+## Publicação automática do Site
 
-Quando o usuário escrever `PUBLICAR SISTEMA`, considerar essa mensagem como aprovação explícita para publicar as alterações prontas no Site atual, usando o nível de acesso público já configurado.
+Após implementar e validar qualquer alteração solicitada no sistema, publicar automaticamente a nova versão no Site atual para que o usuário possa visualizá-la, salvo quando o usuário disser explicitamente “não publique” ou pedir trabalho somente local.
 
-Ao receber o comando:
+Na publicação automática:
 
-1. Validar a compilação e interromper a publicação se houver erro.
+1. Interromper a publicação se a compilação ou a validação falhar.
 2. Criar o commit local descritivo necessário para a versão do Site.
-3. Enviar o commit somente ao repositório interno de publicação do Sites, salvar uma nova versão e publicá-la.
-4. Aguardar a confirmação de sucesso e informar o endereço publicado.
-5. Preservar o banco de dados, as variáveis do ambiente, a lista de administradores, o domínio e o modo de acesso existentes.
-6. Não executar `fetch`, `pull` ou `push` no `origin` do GitHub. A sincronização com o GitHub continua exigindo o pedido separado “sincronize com o GitHub”.
-7. Pedir nova confirmação somente se a publicação exigir apagar ou migrar dados de forma destrutiva, trocar o domínio, alterar administradores ou mudar o modo de acesso.
-
-O comando pode ser escrito com letras maiúsculas ou minúsculas, desde que a frase seja inequívoca.
+3. Enviar o commit somente ao repositório interno de publicação do Sites, salvar uma nova versão, publicá-la e aguardar a confirmação de sucesso.
+4. Preservar o banco de dados, as variáveis do ambiente, a lista de administradores, o domínio e o modo de acesso existentes.
+5. Não executar `fetch`, `pull` ou `push` no `origin` do GitHub. A sincronização com o GitHub continua exigindo o pedido separado “sincronize com o GitHub”.
+6. Pedir confirmação específica somente se a publicação exigir apagar ou migrar dados de forma destrutiva, trocar o domínio, alterar administradores ou mudar o modo de acesso.

@@ -3,6 +3,15 @@ import { getChatGPTUser } from '@/app/chatgpt-auth';
 
 type QuoteInput = Record<string, unknown>;
 type StoredQuoteRow = Record<string, unknown> & { notes?: string | null };
+type StoredQuoteDetails = {
+  selectedSupplies?: unknown[];
+  quantity?: number;
+  unitPrice?: number;
+  unitCost?: number;
+  totalCost?: number;
+  timeHours?: number;
+  timeMinutes?: number;
+};
 
 function encodedNotes(body: QuoteInput) {
   const suppliedDetails = body.details && typeof body.details === 'object' ? body.details as Record<string, unknown> : {};
@@ -12,6 +21,7 @@ function encodedNotes(body: QuoteInput) {
       ...suppliedDetails,
       quantity: body.quantity,
       unitPrice: body.unitPrice,
+      totalCost: body.totalCost ?? body.cost ?? suppliedDetails.totalCost,
       timeHours: body.timeHours,
       timeMinutes: body.timeMinutes,
     },
@@ -21,13 +31,16 @@ function encodedNotes(body: QuoteInput) {
 function decodedQuote(row: StoredQuoteRow) {
   if (!row.notes) return { ...row, notes: '', supplies: [] };
   try {
-    const stored = JSON.parse(row.notes) as { notes?: string; details?: { selectedSupplies?: unknown[]; quantity?: number; unitPrice?: number; timeHours?: number; timeMinutes?: number } };
+    const stored = JSON.parse(row.notes) as { notes?: string; details?: StoredQuoteDetails };
+    const quantity = Number(stored.details?.quantity) || 1;
+    const detailedCost = Number(stored.details?.totalCost) || Number(stored.details?.unitCost) * quantity;
     return {
       ...row,
       notes: stored.notes ?? '',
       supplies: stored.details?.selectedSupplies ?? [],
-      quantity: stored.details?.quantity,
+      quantity,
       unitPrice: stored.details?.unitPrice,
+      cost: detailedCost > 0 ? detailedCost : Number(row.cost) || 0,
       timeHours: stored.details?.timeHours,
       timeMinutes: stored.details?.timeMinutes,
     };
@@ -39,7 +52,7 @@ function decodedQuote(row: StoredQuoteRow) {
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT id, customer_name AS client, item_name AS item, total_price AS total, CASE status WHEN 'paid' THEN 'Pago' WHEN 'draft' THEN 'Pendente' ELSE status END AS status, material_grams AS grams, print_hours AS hours, energy_rate AS energyRate, machine_hourly_rate AS machineRate, packaging_cost AS packaging, fees_percent AS fees, margin_percent AS margin, notes, strftime('%d/%m/%Y', created_at, 'unixepoch') AS date FROM quotes ORDER BY created_at DESC`).all<StoredQuoteRow>();
+  const result = await env.DB.prepare(`SELECT id, customer_name AS client, item_name AS item, total_price AS total, material_cost + energy_cost + machine_cost + packaging_cost + finishing_cost + fees_cost AS cost, CASE status WHEN 'paid' THEN 'Pago' WHEN 'draft' THEN 'Pendente' ELSE status END AS status, material_grams AS grams, print_hours AS hours, energy_rate AS energyRate, machine_hourly_rate AS machineRate, packaging_cost AS packaging, fees_percent AS fees, margin_percent AS margin, notes, strftime('%d/%m/%Y', created_at, 'unixepoch') AS date FROM quotes ORDER BY created_at DESC`).all<StoredQuoteRow>();
   return Response.json(result.results.map(decodedQuote));
 }
 
