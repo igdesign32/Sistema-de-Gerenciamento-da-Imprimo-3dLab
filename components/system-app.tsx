@@ -167,12 +167,12 @@ function Sidebar({ view, menu, onClose, onSelect, user, signOutPath }: { view: V
 }
 
 function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; userName: string }) {
-  const [transactions, setTransactions] = useState<Array<{ type: 'Receita' | 'Despesa'; amount: number; dueDate: string }>>([]);
+  const [transactions, setTransactions] = useState<Array<{ type: 'Receita' | 'Despesa'; amount: number; status: 'Pago' | 'Em aberto'; dueDate: string }>>([]);
   const [recentOrders, setRecentOrders] = useState<Array<{ id: string; customer: string; packageName: string; items: string; createdAt: string; total: number; status: string }>>([]);
   useEffect(() => {
     void fetch('/api/transactions').then(async response => {
       if (!response.ok) throw new Error('Não foi possível carregar o resumo financeiro.');
-      return await response.json() as Array<{ type: 'Receita' | 'Despesa'; amount: number; dueDate: string }>;
+      return await response.json() as Array<{ type: 'Receita' | 'Despesa'; amount: number; status: 'Pago' | 'Em aberto'; dueDate: string }>;
     }).then(setTransactions).catch(() => setTransactions([]));
   }, []);
   useEffect(() => {
@@ -190,10 +190,10 @@ function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; us
     const weekEnd = shiftBusinessDate(weekStart, 6);
     const inRange = (transaction: { dueDate: string }, start: string) => transaction.dueDate >= start && transaction.dueDate <= today;
     const recent = transactions.filter(transaction => inRange(transaction, lastThirtyDays));
-    const revenue = recent.filter(transaction => transaction.type === 'Receita').reduce((sum, transaction) => sum + transaction.amount, 0);
-    const expenses = recent.filter(transaction => transaction.type === 'Despesa').reduce((sum, transaction) => sum + transaction.amount, 0);
-    const annualRevenue = transactions.filter(transaction => transaction.type === 'Receita' && inRange(transaction, yearStart)).reduce((sum, transaction) => sum + transaction.amount, 0);
-    const weeklyRevenue = transactions.filter(transaction => transaction.type === 'Receita' && transaction.dueDate >= weekStart && transaction.dueDate <= weekEnd).reduce((sum, transaction) => sum + transaction.amount, 0);
+    const revenue = recent.filter(transaction => transaction.type === 'Receita' && transaction.status === 'Pago').reduce((sum, transaction) => sum + transaction.amount, 0);
+    const expenses = recent.filter(transaction => transaction.type === 'Despesa' && transaction.status === 'Pago').reduce((sum, transaction) => sum + transaction.amount, 0);
+    const annualRevenue = transactions.filter(transaction => transaction.type === 'Receita' && transaction.status === 'Pago' && inRange(transaction, yearStart)).reduce((sum, transaction) => sum + transaction.amount, 0);
+    const weeklyRevenue = transactions.filter(transaction => transaction.type === 'Receita' && transaction.status === 'Pago' && transaction.dueDate >= weekStart && transaction.dueDate <= weekEnd).reduce((sum, transaction) => sum + transaction.amount, 0);
     const shortDate = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
     const netProfit = revenue - expenses;
     return { revenue, weeklyRevenue, weekLabel: `${shortDate(weekStart)} a ${shortDate(weekEnd)}`, annualRevenue, netProfit, margin: revenue > 0 ? netProfit / revenue * 100 : 0, year: today.slice(0, 4) };
@@ -398,12 +398,16 @@ function ConsignmentsView() {
 }
 
 function OrdersView() {
-  const [orders, setOrders] = useState<Array<{ id: string; customer: string; packageName: string; items: string; itemDetails: Array<{ name: string; quantity: number; unitCost: number; unitPrice: number; subtotal: number }>; quantity: number; total: number; cost: number; status: string; paid: number | boolean; createdAt: string }>>([]);
+  type OrderRow = { id: string; customer: string; packageName: string; items: string; itemDetails: Array<{ name: string; quantity: number; unitCost: number; unitPrice: number; subtotal: number }>; quantity: number; total: number; cost: number; status: string; paid: number | boolean; paidAmount: number; pendingAmount: number; createdAt: string };
+  const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedOrder, setExpandedOrder] = useState('');
   const [savingId, setSavingId] = useState('');
   const [deletingId, setDeletingId] = useState('');
   const [payingId, setPayingId] = useState('');
+  const [paymentOrder, setPaymentOrder] = useState<OrderRow | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNotice, setPaymentNotice] = useState('');
   const [error, setError] = useState('');
   const currentMonth = businessYearMonth();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
@@ -446,26 +450,52 @@ function OrdersView() {
       setDeletingId('');
     }
   };
-  const togglePayment = async (order: (typeof orders)[number]) => {
-    const reversing = Boolean(order.paid);
-    const confirmed = window.confirm(reversing ? 'Desfazer o pagamento deste pedido? A receita e a despesa serão removidas do Financeiro.' : `Confirmar o pagamento de ${brl(order.total)}? A receita e o custo de ${brl(order.cost)} serão registrados no Financeiro.`);
-    if (!confirmed) return;
+  const openPayment = (order: OrderRow) => {
+    const pending = Math.max(0, Number(order.pendingAmount ?? order.total));
+    setPaymentOrder(order);
+    setPaymentAmount(pending.toFixed(2));
+    setPaymentNotice('');
+    setError('');
+  };
+  const registerPayment = async (amount: number) => {
+    if (!paymentOrder || !Number.isFinite(amount) || amount <= 0) { setError('Informe um valor de pagamento maior que zero.'); return; }
+    const order = paymentOrder;
     setPayingId(order.id);
     setError('');
     try {
-      const response = await fetch(reversing ? `/api/orders/pay?id=${encodeURIComponent(order.id)}` : '/api/orders/pay', reversing ? { method: 'DELETE' } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: order.id }) });
-      const result = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(result.error || (reversing ? 'Não foi possível desfazer o pagamento.' : 'Não foi possível registrar o pagamento.'));
-      setOrders(current => current.map(item => item.id === order.id ? { ...item, paid: !reversing } : item));
+      const response = await fetch('/api/orders/pay', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: order.id, amount }) });
+      const result = await response.json() as { error?: string; paid?: boolean; paidAmount?: number; pendingAmount?: number };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível registrar o pagamento.');
+      const updated = { ...order, paid: Boolean(result.paid), paidAmount: Number(result.paidAmount) || 0, pendingAmount: Number(result.pendingAmount) || 0 };
+      setOrders(current => current.map(item => item.id === order.id ? updated : item));
+      setPaymentOrder(null);
+      setPaymentNotice(updated.paid ? `${order.id} foi pago integralmente.` : `${brl(amount)} registrado. Restam ${brl(updated.pendingAmount)}.`);
     } catch (problem) {
-      setError(problem instanceof Error ? problem.message : reversing ? 'Não foi possível desfazer o pagamento.' : 'Não foi possível registrar o pagamento.');
+      setError(problem instanceof Error ? problem.message : 'Não foi possível registrar o pagamento.');
     } finally { setPayingId(''); }
   };
-  return <ModuleShell compact title={`${visibleOrders.length} pedidos em ${monthLabel(selectedMonth)}`} detail="Pedidos ativos continuam no mês seguinte até serem concluídos" action="Novo pedido">
+  const reversePayments = async () => {
+    if (!paymentOrder || !window.confirm('Desfazer todos os pagamentos deste pedido? As parcelas, o saldo e o custo serão removidos do Financeiro.')) return;
+    const order = paymentOrder;
+    setPayingId(order.id);
+    setError('');
+    try {
+      const response = await fetch(`/api/orders/pay?id=${encodeURIComponent(order.id)}`, { method: 'DELETE' });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível desfazer os pagamentos.');
+      setOrders(current => current.map(item => item.id === order.id ? { ...item, paid: false, paidAmount: 0, pendingAmount: item.total } : item));
+      setPaymentOrder(null);
+      setPaymentNotice(`Pagamentos de ${order.id} desfeitos.`);
+    } catch (problem) { setError(problem instanceof Error ? problem.message : 'Não foi possível desfazer os pagamentos.'); }
+    finally { setPayingId(''); }
+  };
+  return <><ModuleShell compact title={`${visibleOrders.length} pedidos em ${monthLabel(selectedMonth)}`} detail="Pedidos ativos continuam no mês seguinte até serem concluídos" action="Novo pedido">
     <div className="flex flex-col gap-2 border-b px-4 py-2 sm:flex-row sm:items-center sm:justify-between"><div><label htmlFor="orders-month" className="text-xs font-semibold text-slate-600">Visualizar mês</label>{carriedOrders > 0 && <p className="text-[11px] text-blue-600">Inclui {carriedOrders} {carriedOrders === 1 ? 'pedido ativo de mês anterior' : 'pedidos ativos de meses anteriores'}.</p>}</div><select id="orders-month" value={selectedMonth} onChange={event => setSelectedMonth(event.target.value)} className="h-8 rounded-lg border bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-[#0068ff]/30">{availableMonths.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}</select></div>
-    <div className="overflow-x-auto"><table className="w-full min-w-[1040px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Pedido','Cliente','Pacote / itens','Criado em','Valor','Custo','Status','Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{visibleOrders.map(order => <Fragment key={order.id}><tr className="border-b hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{order.id}</td><td className="px-4 py-3 text-xs text-slate-600">{order.customer}</td><td className="px-4 py-3"><b className="block text-xs text-slate-800">{order.packageName}</b><button type="button" onClick={() => setExpandedOrder(current => current === order.id ? '' : order.id)} className="mt-1 text-[11px] font-medium text-[#0068ff] hover:underline">{expandedOrder === order.id ? 'Ocultar itens' : `Ver ${order.itemDetails?.length || order.quantity} itens`}</button></td><td className="px-4 py-3 text-xs text-slate-600">{order.createdAt}</td><td className="px-4 py-3 text-xs font-semibold text-slate-700">{brl(order.total)}</td><td className="px-4 py-3 text-xs text-red-600">{brl(order.cost)}</td><td className="px-4 py-2"><select aria-label={`Status do pedido ${order.id}`} value={order.status} disabled={savingId === order.id} onChange={event => void updateStatus(order.id, event.target.value)} className={`h-8 cursor-pointer rounded-full border-0 px-3 text-xs font-semibold outline-none ring-1 transition focus:ring-2 focus:ring-[#0068ff] disabled:cursor-wait disabled:opacity-60 ${statusClass(order.status)}`}><option value="Aguardando fila">Aguardando fila</option><option value="Em andamento">Em andamento</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select></td><td className="px-4 py-2"><div className="flex items-center gap-1"><Button onClick={() => void togglePayment(order)} disabled={payingId === order.id || (!order.paid && order.status === 'Cancelado')} variant="ghost" size="icon" aria-label={order.paid ? `Desfazer pagamento do pedido ${order.id}` : `Marcar pedido ${order.id} como pago`} title={order.paid ? 'Desfazer pagamento e remover os lançamentos' : order.status === 'Cancelado' ? 'Pedido cancelado' : 'Marcar como pago'} className={order.paid ? 'bg-emerald-100 text-emerald-700 hover:bg-amber-100 hover:text-amber-700' : 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700'}><CheckCircle2/></Button><Button onClick={() => void deleteOrder(order.id)} disabled={deletingId === order.id} variant="ghost" size="icon" aria-label={`Apagar pedido ${order.id}`} title="Apagar pedido" className="text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2/></Button></div></td></tr>{expandedOrder === order.id && <tr className="border-b bg-blue-50/50"><td colSpan={8} className="px-4 py-3"><div className="overflow-hidden rounded-lg border border-blue-100 bg-white"><div className="grid grid-cols-[1fr_70px_105px_105px_105px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400"><span>Item do pacote</span><span>Qtd.</span><span>Custo unit.</span><span>Valor unit.</span><span>Subtotal</span></div>{(order.itemDetails ?? []).map((item, index) => <div key={`${item.name}-${index}`} className="grid grid-cols-[1fr_70px_105px_105px_105px] gap-3 border-t px-3 py-2 text-xs text-slate-700"><span className="font-medium">{item.name}</span><span>{item.quantity}</span><span className="text-red-600">{brl(Number(item.unitCost))}</span><span>{brl(Number(item.unitPrice))}</span><span className="font-semibold">{brl(Number(item.subtotal))}</span></div>)}</div></td></tr>}</Fragment>)}</tbody></table></div>
-    {loading && <p className="p-6 text-center text-sm text-slate-400">Carregando pedidos...</p>}{!loading && !visibleOrders.length && <p className="p-6 text-center text-sm text-slate-400">Nenhum pedido neste mês.</p>}{error && <p role="alert" className="border-t bg-red-50 px-4 py-3 text-xs font-medium text-red-700">{error}</p>}
-  </ModuleShell>;
+    <div className="overflow-x-auto"><table className="w-full min-w-[1040px] text-left"><thead><tr className="border-b bg-slate-50 text-[10px] uppercase tracking-[.08em] text-slate-400">{['Pedido','Cliente','Pacote / itens','Criado em','Valor / pagamento','Custo','Status','Ações'].map(header => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody>{visibleOrders.map(order => { const paidAmount = Number(order.paidAmount) || 0; const pendingAmount = Number(order.pendingAmount ?? order.total) || 0; return <Fragment key={order.id}><tr className="border-b hover:bg-slate-50/60"><td className="px-4 py-3 text-xs font-semibold">{order.id}</td><td className="px-4 py-3 text-xs text-slate-600">{order.customer}</td><td className="px-4 py-3"><b className="block text-xs text-slate-800">{order.packageName}</b><button type="button" onClick={() => setExpandedOrder(current => current === order.id ? '' : order.id)} className="mt-1 text-[11px] font-medium text-[#0068ff] hover:underline">{expandedOrder === order.id ? 'Ocultar itens' : `Ver ${order.itemDetails?.length || order.quantity} itens`}</button></td><td className="px-4 py-3 text-xs text-slate-600">{order.createdAt}</td><td className="px-4 py-3"><b className="block text-xs text-slate-700">{brl(order.total)}</b>{paidAmount > 0 && <span className={`mt-1 block text-[10px] font-medium ${pendingAmount > .005 ? 'text-amber-700' : 'text-emerald-700'}`}>{pendingAmount > .005 ? `${brl(paidAmount)} pago · falta ${brl(pendingAmount)}` : 'Pago integralmente'}</span>}</td><td className="px-4 py-3 text-xs text-red-600">{brl(order.cost)}</td><td className="px-4 py-2"><select aria-label={`Status do pedido ${order.id}`} value={order.status} disabled={savingId === order.id} onChange={event => void updateStatus(order.id, event.target.value)} className={`h-8 cursor-pointer rounded-full border-0 px-3 text-xs font-semibold outline-none ring-1 transition focus:ring-2 focus:ring-[#0068ff] disabled:cursor-wait disabled:opacity-60 ${statusClass(order.status)}`}><option value="Aguardando fila">Aguardando fila</option><option value="Em andamento">Em andamento</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select></td><td className="px-4 py-2"><div className="flex items-center gap-1"><Button onClick={() => openPayment(order)} disabled={payingId === order.id || (order.status === 'Cancelado' && paidAmount <= 0)} variant="ghost" size="icon" aria-label={`Gerenciar pagamento do pedido ${order.id}`} title={order.status === 'Cancelado' && paidAmount <= 0 ? 'Pedido cancelado' : 'Gerenciar pagamentos'} className={order.paid ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : paidAmount > 0 ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700'}><CheckCircle2/></Button><Button onClick={() => void deleteOrder(order.id)} disabled={deletingId === order.id} variant="ghost" size="icon" aria-label={`Apagar pedido ${order.id}`} title="Apagar pedido" className="text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2/></Button></div></td></tr>{expandedOrder === order.id && <tr className="border-b bg-blue-50/50"><td colSpan={8} className="px-4 py-3"><div className="overflow-hidden rounded-lg border border-blue-100 bg-white"><div className="grid grid-cols-[1fr_70px_105px_105px_105px] gap-3 bg-slate-50 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400"><span>Item do pacote</span><span>Qtd.</span><span>Custo unit.</span><span>Valor unit.</span><span>Subtotal</span></div>{(order.itemDetails ?? []).map((item, index) => <div key={`${item.name}-${index}`} className="grid grid-cols-[1fr_70px_105px_105px_105px] gap-3 border-t px-3 py-2 text-xs text-slate-700"><span className="font-medium">{item.name}</span><span>{item.quantity}</span><span className="text-red-600">{brl(Number(item.unitCost))}</span><span>{brl(Number(item.unitPrice))}</span><span className="font-semibold">{brl(Number(item.subtotal))}</span></div>)}</div></td></tr>}</Fragment>; })}</tbody></table></div>
+    {loading && <p className="p-6 text-center text-sm text-slate-400">Carregando pedidos...</p>}{!loading && !visibleOrders.length && <p className="p-6 text-center text-sm text-slate-400">Nenhum pedido neste mês.</p>}{paymentNotice && <p className="border-t bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-700">{paymentNotice}</p>}{error && <p role="alert" className="border-t bg-red-50 px-4 py-3 text-xs font-medium text-red-700">{error}</p>}
+  </ModuleShell>
+  <Dialog open={Boolean(paymentOrder)} onOpenChange={open => { if (!open && !payingId) setPaymentOrder(null); }}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle>Pagamento do pedido {paymentOrder?.id}</DialogTitle><DialogDescription>Registre uma entrada parcial ou quite todo o saldo. Cada pagamento será sincronizado com o Financeiro.</DialogDescription></DialogHeader>{paymentOrder && <div className="space-y-4"><div className="grid grid-cols-3 gap-2"><div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] uppercase text-slate-400">Total</p><b className="mt-1 block text-sm">{brl(paymentOrder.total)}</b></div><div className="rounded-xl bg-emerald-50 p-3"><p className="text-[10px] uppercase text-emerald-600">Já pago</p><b className="mt-1 block text-sm text-emerald-700">{brl(Number(paymentOrder.paidAmount) || 0)}</b></div><div className="rounded-xl bg-amber-50 p-3"><p className="text-[10px] uppercase text-amber-600">Pendente</p><b className="mt-1 block text-sm text-amber-700">{brl(Number(paymentOrder.pendingAmount ?? paymentOrder.total) || 0)}</b></div></div>{Number(paymentOrder.pendingAmount ?? paymentOrder.total) > .005 ? <label className="block text-sm font-medium text-slate-700">Valor recebido agora<Input type="number" min="0.01" step="0.01" max={Number(paymentOrder.pendingAmount ?? paymentOrder.total)} value={paymentAmount} onChange={event => setPaymentAmount(event.target.value)} className="mt-1"/></label> : <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">Este pedido está pago integralmente.</p>}</div>}<DialogFooter className="flex-wrap sm:justify-between">{paymentOrder && Number(paymentOrder.paidAmount) > 0 && <Button variant="outline" onClick={() => void reversePayments()} disabled={Boolean(payingId)} className="text-red-600 hover:bg-red-50 hover:text-red-700"><RotateCcw/> Desfazer pagamentos</Button>}<div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setPaymentOrder(null)} disabled={Boolean(payingId)}>Cancelar</Button>{paymentOrder && Number(paymentOrder.pendingAmount ?? paymentOrder.total) > .005 && <><Button variant="outline" onClick={() => void registerPayment(Number(paymentAmount.replace(',', '.')))} disabled={Boolean(payingId)}>{payingId ? 'Registrando...' : 'Registrar valor informado'}</Button><Button onClick={() => void registerPayment(Number(paymentOrder.pendingAmount ?? paymentOrder.total))} disabled={Boolean(payingId)} className="bg-emerald-600 text-white hover:bg-emerald-700"><CheckCircle2/> {payingId ? 'Registrando...' : 'Pagar saldo integral'}</Button></>}</div></DialogFooter></DialogContent></Dialog>
+  </>;
 }
 
 function CustomersView() {

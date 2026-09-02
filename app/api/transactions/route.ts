@@ -29,8 +29,8 @@ export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
   const localToday = businessDateUnix();
-  await env.DB.prepare(`UPDATE transactions SET due_at = ?, updated_at = unixepoch() WHERE (id LIKE 'order-income:%' OR id LIKE 'order-expense:%' OR id LIKE 'quote-income:%' OR id LIKE 'quote-expense:%' OR id LIKE 'consignment-income:%' OR id LIKE 'consignment-expense:%') AND due_at > ? AND due_at < ? AND created_at >= unixepoch() - 21600`).bind(localToday, localToday, localToday + 86400).run();
-  const result = await env.DB.prepare(`${selectTransactions} WHERE order_id IS NULL OR paid_at IS NOT NULL ORDER BY due_at DESC, created_at DESC`).all<TransactionRow>();
+  await env.DB.prepare(`UPDATE transactions SET due_at = ?, updated_at = unixepoch() WHERE (id LIKE 'order-income:%' OR id LIKE 'order-balance:%' OR id LIKE 'order-expense:%' OR id LIKE 'quote-income:%' OR id LIKE 'quote-expense:%' OR id LIKE 'consignment-income:%' OR id LIKE 'consignment-expense:%') AND due_at > ? AND due_at < ? AND created_at >= unixepoch() - 21600`).bind(localToday, localToday, localToday + 86400).run();
+  const result = await env.DB.prepare(`${selectTransactions} ORDER BY due_at DESC, created_at DESC`).all<TransactionRow>();
   return Response.json(result.results.map(decode));
 }
 
