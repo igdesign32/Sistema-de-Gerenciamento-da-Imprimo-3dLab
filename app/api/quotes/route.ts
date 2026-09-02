@@ -52,7 +52,7 @@ function decodedQuote(row: StoredQuoteRow) {
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT id, customer_name AS client, item_name AS item, total_price AS total, material_cost + energy_cost + machine_cost + packaging_cost + finishing_cost + fees_cost AS cost, CASE status WHEN 'paid' THEN 'Pago' WHEN 'draft' THEN 'Pendente' ELSE status END AS status, material_grams AS grams, print_hours AS hours, energy_rate AS energyRate, machine_hourly_rate AS machineRate, packaging_cost AS packaging, fees_percent AS fees, margin_percent AS margin, notes, strftime('%d/%m/%Y', created_at, 'unixepoch') AS date FROM quotes ORDER BY created_at DESC`).all<StoredQuoteRow>();
+  const result = await env.DB.prepare(`SELECT id, customer_name AS client, item_name AS item, total_price AS total, material_cost + energy_cost + machine_cost + packaging_cost + finishing_cost + fees_cost AS cost, CASE status WHEN 'paid' THEN 'Pago' WHEN 'draft' THEN 'Pendente' ELSE status END AS status, material_grams AS grams, print_hours AS hours, energy_rate AS energyRate, machine_hourly_rate AS machineRate, packaging_cost AS packaging, fees_percent AS fees, margin_percent AS margin, notes, strftime('%d/%m/%Y', created_at, 'unixepoch', '-3 hours') AS date FROM quotes ORDER BY created_at DESC`).all<StoredQuoteRow>();
   return Response.json(result.results.map(decodedQuote));
 }
 

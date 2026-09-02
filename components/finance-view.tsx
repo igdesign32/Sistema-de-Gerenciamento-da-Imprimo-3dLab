@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { businessDate, shiftBusinessDate } from '@/lib/business-date';
 
 type Period = 'today' | '7d' | '30d' | 'month' | 'year' | 'custom';
 type FinanceTab = 'income' | 'expense' | 'cashflow' | 'charts';
@@ -16,7 +17,7 @@ type FinanceTransaction = {
 type InventoryPart = { id: string; sku: string; name: string; price: number };
 
 const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-const localDate = () => { const date = new Date(); date.setMinutes(date.getMinutes() - date.getTimezoneOffset()); return date.toISOString().slice(0, 10); };
+const localDate = () => businessDate();
 const fieldClass = 'h-10 w-full rounded-md border border-[#dfe5ee] bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#0068ff] focus:ring-2 focus:ring-[#0068ff]/15';
 const editFieldClass = 'h-10 w-full rounded-md border border-blue-300/30 bg-[#032c5e] px-3 text-sm text-white outline-none focus:border-[#ff6b35] focus:ring-2 focus:ring-[#ff6b35]/25';
 const categories = ['Vendas diversas', 'Peças acabadas', 'Venda de orçamento', 'Serviço de impressão', 'Projeto personalizado', 'Outros'];
@@ -96,14 +97,15 @@ export function FinanceView() {
   }, [draftLoaded, editingId, period, customStart, customEnd, tab, query, categoryFilter, paymentFilter, accountFilter, expenseKindFilter, dueDate, inventoryItemId, product, category, quantity, unitValue, account, paymentMethod, notes, expenseKind]);
 
   const periodTransactions = useMemo(() => {
-    const now = new Date(); now.setHours(23, 59, 59, 999);
-    let start = new Date(now); start.setHours(0, 0, 0, 0);
-    if (period === '7d') start.setDate(start.getDate() - 6);
-    if (period === '30d') start.setDate(start.getDate() - 29);
-    if (period === 'month') start = new Date(now.getFullYear(), now.getMonth(), 1);
-    if (period === 'year') start = new Date(now.getFullYear(), 0, 1);
-    if (period === 'custom') { start = new Date(`${customStart}T00:00:00`); now.setTime(new Date(`${customEnd}T23:59:59`).getTime()); }
-    return transactions.filter(item => { const date = new Date(`${item.dueDate}T12:00:00`); return date >= start && date <= now; });
+    const today = businessDate();
+    let start = today;
+    let end = today;
+    if (period === '7d') start = shiftBusinessDate(today, -6);
+    if (period === '30d') start = shiftBusinessDate(today, -29);
+    if (period === 'month') start = `${today.slice(0, 7)}-01`;
+    if (period === 'year') start = `${today.slice(0, 4)}-01-01`;
+    if (period === 'custom') { start = customStart; end = customEnd; }
+    return transactions.filter(item => item.dueDate >= start && item.dueDate <= end);
   }, [transactions, period, customStart, customEnd]);
 
   const income = periodTransactions.filter(item => item.type === 'Receita').reduce((total, item) => total + item.amount, 0);

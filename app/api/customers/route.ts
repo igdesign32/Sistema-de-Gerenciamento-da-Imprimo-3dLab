@@ -6,7 +6,7 @@ type CustomerInput = { name?: string; phone?: string; email?: string };
 export async function GET() {
   const user = await getChatGPTUser();
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
-  const result = await env.DB.prepare(`SELECT c.id, c.name, COALESCE(c.phone, '') AS phone, COALESCE(c.email, '') AS email, COUNT(o.id) AS orders, COALESCE(strftime('%d/%m/%Y', MAX(o.created_at), 'unixepoch'), 'Sem pedidos') AS lastOrder, COALESCE(SUM(o.total_price), 0) AS total FROM customers c LEFT JOIN orders o ON o.customer_id = c.id WHERE c.active = 1 GROUP BY c.id ORDER BY c.name`).all();
+  const result = await env.DB.prepare(`SELECT c.id, c.name, COALESCE(c.phone, '') AS phone, COALESCE(c.email, '') AS email, COUNT(o.id) AS orders, COALESCE(strftime('%d/%m/%Y', MAX(o.created_at), 'unixepoch', '-3 hours'), 'Sem pedidos') AS lastOrder, COALESCE(SUM(o.total_price), 0) AS total FROM customers c LEFT JOIN orders o ON o.customer_id = c.id WHERE c.active = 1 GROUP BY c.id ORDER BY c.name`).all();
   return Response.json(result.results);
 }
 

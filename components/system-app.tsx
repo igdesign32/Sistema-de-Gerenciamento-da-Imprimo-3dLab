@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { CalculatorView, type CalculatorQuote, type CalculatorQuoteSupply } from '@/components/calculator-view';
 import { FinanceView } from '@/components/finance-view';
+import { BUSINESS_TIME_ZONE, businessDate, businessYearMonth, shiftBusinessDate } from '@/lib/business-date';
 import { defaultPricingDefaults, type PricingDefaults } from '@/lib/pricing-defaults';
 
 type View = 'Visão geral' | 'Calculadora' | 'Orçamentos' | 'Pedidos' | 'Consignados' | 'Estoque' | 'Clientes' | 'Financeiro' | 'Configurações';
@@ -181,25 +182,26 @@ function Dashboard({ onNavigate, userName }: { onNavigate: (v: View) => void; us
     }).then(orders => setRecentOrders(orders.slice(0, 4))).catch(() => setRecentOrders([]));
   }, []);
   const finance = useMemo(() => {
-    const now = new Date(); now.setHours(23, 59, 59, 999);
-    const lastThirtyDays = new Date(now); lastThirtyDays.setDate(lastThirtyDays.getDate() - 29); lastThirtyDays.setHours(0, 0, 0, 0);
-    const yearStart = new Date(now.getFullYear(), 0, 1);
-    const weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - (weekStart.getDay() === 0 ? 6 : weekStart.getDay() - 1)); weekStart.setHours(0, 0, 0, 0);
-    const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6); weekEnd.setHours(23, 59, 59, 999);
-    const inRange = (transaction: { dueDate: string }, start: Date) => { const date = new Date(`${transaction.dueDate}T12:00:00`); return date >= start && date <= now; };
+    const today = businessDate();
+    const lastThirtyDays = shiftBusinessDate(today, -29);
+    const yearStart = `${today.slice(0, 4)}-01-01`;
+    const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
+    const weekStart = shiftBusinessDate(today, -(weekday === 0 ? 6 : weekday - 1));
+    const weekEnd = shiftBusinessDate(weekStart, 6);
+    const inRange = (transaction: { dueDate: string }, start: string) => transaction.dueDate >= start && transaction.dueDate <= today;
     const recent = transactions.filter(transaction => inRange(transaction, lastThirtyDays));
     const revenue = recent.filter(transaction => transaction.type === 'Receita').reduce((sum, transaction) => sum + transaction.amount, 0);
     const expenses = recent.filter(transaction => transaction.type === 'Despesa').reduce((sum, transaction) => sum + transaction.amount, 0);
     const annualRevenue = transactions.filter(transaction => transaction.type === 'Receita' && inRange(transaction, yearStart)).reduce((sum, transaction) => sum + transaction.amount, 0);
-    const weeklyRevenue = transactions.filter(transaction => { const date = new Date(`${transaction.dueDate}T12:00:00`); return transaction.type === 'Receita' && date >= weekStart && date <= weekEnd; }).reduce((sum, transaction) => sum + transaction.amount, 0);
-    const shortDate = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+    const weeklyRevenue = transactions.filter(transaction => transaction.type === 'Receita' && transaction.dueDate >= weekStart && transaction.dueDate <= weekEnd).reduce((sum, transaction) => sum + transaction.amount, 0);
+    const shortDate = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
     const netProfit = revenue - expenses;
-    return { revenue, weeklyRevenue, weekLabel: `${shortDate.format(weekStart)} a ${shortDate.format(weekEnd)}`, annualRevenue, netProfit, margin: revenue > 0 ? netProfit / revenue * 100 : 0 };
+    return { revenue, weeklyRevenue, weekLabel: `${shortDate(weekStart)} a ${shortDate(weekEnd)}`, annualRevenue, netProfit, margin: revenue > 0 ? netProfit / revenue * 100 : 0, year: today.slice(0, 4) };
   }, [transactions]);
   const metrics: Array<[React.ElementType, string, string, string, string]> = [
     [HandCoins, 'Faturamento total', brl(finance.revenue), 'Últimos 30 dias · Financeiro', 'green'],
     [CircleDollarSign, 'Faturamento semanal', brl(finance.weeklyRevenue), `${finance.weekLabel} · Segunda a domingo`, 'blue'],
-    [WalletCards, 'Faturamento total anual', brl(finance.annualRevenue), `Ano de ${new Date().getFullYear()}`, 'orange'],
+    [WalletCards, 'Faturamento total anual', brl(finance.annualRevenue), `Ano de ${finance.year}`, 'orange'],
     [TrendingUp, 'Lucro líquido', brl(finance.netProfit), `${finance.margin.toFixed(1)}% de margem · últimos 30 dias`, 'violet'],
   ];
   return <>
@@ -227,7 +229,7 @@ type ConsignmentItem = { inventoryItemId: string; name: string; quantity: number
 type Consignment = { id: string; establishment: string; items: string; itemDetails: ConsignmentItem[]; deliveryDate: string; visitDate: string; paid: number | boolean };
 type InventoryPart = { id: string; sku: string; name: string; stock: number; price: number };
 
-const emptyConsignmentForm = () => ({ id: '', establishment: '', itemDetails: [] as ConsignmentItem[], deliveryDate: new Date().toISOString().slice(0, 10), visitDate: '' });
+const emptyConsignmentForm = () => ({ id: '', establishment: '', itemDetails: [] as ConsignmentItem[], deliveryDate: businessDate(), visitDate: '' });
 const CONSIGNMENT_DRAFT_KEY = 'imprimo3dlab:consignment-draft:v1';
 
 function ConsignmentsView() {
@@ -403,11 +405,11 @@ function OrdersView() {
   const [deletingId, setDeletingId] = useState('');
   const [payingId, setPayingId] = useState('');
   const [error, setError] = useState('');
-  const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const currentMonth = businessYearMonth();
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   useEffect(() => { void fetch('/api/orders').then(response => response.ok ? response.json() : Promise.reject()).then(result => setOrders(result as typeof orders)).catch(() => setOrders([])).finally(() => setLoading(false)); }, []);
   const orderMonth = (date: string) => { const [, month, year] = date.split('/'); return year && month ? `${year}-${month}` : currentMonth; };
-  const monthLabel = (key: string) => { const [year, month] = key.split('-').map(Number); const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1)); return label.charAt(0).toUpperCase() + label.slice(1); };
+  const monthLabel = (key: string) => { const [year, month] = key.split('-').map(Number); const label = new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: BUSINESS_TIME_ZONE }).format(new Date(Date.UTC(year, month - 1, 15, 12))); return label.charAt(0).toUpperCase() + label.slice(1); };
   const availableMonths = Array.from(new Set([currentMonth, ...orders.map(order => orderMonth(order.createdAt))])).sort((a, b) => b.localeCompare(a));
   const activeStatuses = ['Aguardando fila', 'Em andamento'];
   const visibleOrders = orders.filter(order => orderMonth(order.createdAt) === selectedMonth || (selectedMonth === currentMonth && orderMonth(order.createdAt) < currentMonth && activeStatuses.includes(order.status)));
@@ -843,7 +845,7 @@ function QuoteEditor({ parts = [], cart = [], customer = null, quote, onClose }:
   const quoteTotal = quote ? parseBrl(quote.total) : 0;
   const rows = quote ? [{ key: quote.id, name: quote.item, quantity: quote.quantity ?? 1, unitPrice: quote.unitPrice ?? quoteTotal, lineTotal: quoteTotal }] : cartRows;
   const total = rows.reduce((sum, row) => sum + row.lineTotal, 0);
-  const createdAt = quote?.date || new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date());
+  const createdAt = quote?.date || new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: BUSINESS_TIME_ZONE }).format(new Date());
   const printQuote = () => {
     document.body.classList.add('quote-printing');
     const finish = () => document.body.classList.remove('quote-printing');
