@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   const expenseId = `quote-expense:${id}`;
   const incomeDescription = JSON.stringify({ product: `Orçamento ${id} — ${item}`, quantity: 1, account: 'Conta Corrente', notes: `Cliente: ${client}` });
   const expenseDescription = JSON.stringify({ product: `Custo de produção — ${item}`, quantity: 1, account: 'Conta Corrente', notes: `Gerado automaticamente pelo orçamento ${id}`, expenseKind: 'Variável' });
-  const storedNotes = JSON.stringify({ notes: body.notes?.trim() || '', details: { ...(body.details ?? {}), quantity: body.quantity, unitPrice: body.unitPrice, totalCost, timeHours: body.timeHours, timeMinutes: body.timeMinutes } });
+  const storedNotes = JSON.stringify({ notes: body.notes?.trim() || '', details: { ...body.details, quantity: body.quantity, unitPrice: body.unitPrice, totalCost, timeHours: body.timeHours, timeMinutes: body.timeMinutes } });
   const dueAt = businessDateUnix();
 
   await env.DB.batch([

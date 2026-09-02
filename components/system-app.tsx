@@ -115,10 +115,17 @@ export function SystemApp({ user, signOutPath, initialViewSlug }: { user: { name
     }
   };
   const deleteQuote = async (quote: Quote) => {
-    setQuotes(current => current.filter(item => item.id !== quote.id));
-    setNotice(`${quote.id} apagado.`);
-    window.setTimeout(() => setNotice(''), 3500);
-    try { await fetch(`/api/quotes?id=${encodeURIComponent(quote.id)}`, { method: 'DELETE' }); } catch { /* local list remains updated */ }
+    if (!window.confirm(`Apagar o orçamento ${quote.id}? Se ele já estiver vinculado a um pedido, o sistema preservará o registro.`)) return;
+    try {
+      const response = await fetch(`/api/quotes?id=${encodeURIComponent(quote.id)}`, { method: 'DELETE' });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || 'Não foi possível apagar o orçamento.');
+      setQuotes(current => current.filter(item => item.id !== quote.id));
+      setNotice(`${quote.id} apagado.`);
+    } catch (problem) {
+      setNotice(problem instanceof Error ? problem.message : 'Não foi possível apagar o orçamento.');
+    }
+    window.setTimeout(() => setNotice(''), 5000);
   };
   const convertQuoteToOrder = async (quote: Quote) => {
     try {

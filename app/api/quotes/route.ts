@@ -98,8 +98,14 @@ export async function DELETE(request: Request) {
   if (!user) return Response.json({ error: 'Não autorizado' }, { status: 401 });
   const id = new URL(request.url).searchParams.get('id');
   if (!id) return Response.json({ error: 'Orçamento não informado' }, { status: 400 });
-  await env.DB.prepare('DELETE FROM quotes WHERE id = ?').bind(id).run();
-  await env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'quote', ?, 'deleted', '{}', unixepoch())`)
-    .bind(crypto.randomUUID(), user.userId, id).run();
+  const quote = await env.DB.prepare('SELECT id FROM quotes WHERE id = ?').bind(id).first<{ id: string }>();
+  if (!quote) return Response.json({ error: 'Orçamento não encontrado' }, { status: 404 });
+  const linkedOrder = await env.DB.prepare('SELECT id FROM orders WHERE quote_id = ? LIMIT 1').bind(id).first<{ id: string }>();
+  if (linkedOrder) return Response.json({ error: `Este orçamento já está vinculado ao pedido ${linkedOrder.id} e precisa ser preservado para manter os dados sincronizados.` }, { status: 409 });
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM transactions WHERE id IN (?, ?)').bind(`quote-income:${id}`, `quote-expense:${id}`),
+    env.DB.prepare('DELETE FROM quotes WHERE id = ?').bind(id),
+    env.DB.prepare(`INSERT INTO audit_logs (id, actor_id, entity_type, entity_id, action, after_json, created_at) VALUES (?, ?, 'quote', ?, 'deleted', '{}', unixepoch())`).bind(crypto.randomUUID(), user.userId, id),
+  ]);
   return Response.json({ ok: true });
 }
